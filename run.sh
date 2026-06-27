@@ -46,5 +46,5 @@ echo ""
 # If URL arguments provided, run download and exit
 if [[ $# -gt 0 ]]; then
     echo "[RUN] Downloading $# URL(s)..."
-    env UID="$MY_UID" GID="$MY_GID" USER="$MY_USER" docker compose run --rm yt-downloader "$@"
+    env UID="$MY_UID" GID="$MY_GID" USER="$MY_USER" docker compose run --rm yt-downloader /app/downloader.sh "$@"
 fi

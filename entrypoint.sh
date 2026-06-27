@@ -37,5 +37,10 @@ chown -R "$USER_UID:$USER_GID" /app/.yt-dlp-config 2>/dev/null || true
 mkdir -p /app/downloads/Videos /app/downloads/Music /app/.yt-dlp-logs /app/.yt-dlp-config
 chown -R "$USER_UID:$USER_GID" /app/downloads /app/.yt-dlp-logs /app/.yt-dlp-config
 
+# === If first arg is a URL (not a script), prepend downloader ===
+if [[ "$1" == http* ]] || [[ "$1" == *youtube* ]] || [[ "$1" == *youtu.be* ]]; then
+    exec su-exec "$USERNAME" /app/downloader.sh "$@"
+fi
+
 # === Execute main command as the user ===
 exec su-exec "$USERNAME" "$@"
