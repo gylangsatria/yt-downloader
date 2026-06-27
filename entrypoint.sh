@@ -31,11 +31,14 @@ fi
 # === Fix permissions on all mounted directories ===
 chown -R "$USER_UID:$USER_GID" /app/downloads 2>/dev/null || true
 chown -R "$USER_UID:$USER_GID" /app/.yt-dlp-logs 2>/dev/null || true
-chown -R "$USER_UID:$USER_GID" /app/.yt-dlp-config 2>/dev/null || true
+# Chown config items excluding read-only mounted cookies.txt
+find /app/.yt-dlp-config -mindepth 1 -maxdepth 1 ! -name 'cookies.txt' -exec chown -R "$USER_UID:$USER_GID" {} + 2>/dev/null || true
 
 # === Ensure download directories exist ===
 mkdir -p /app/downloads/Videos /app/downloads/Music /app/.yt-dlp-logs /app/.yt-dlp-config
-chown -R "$USER_UID:$USER_GID" /app/downloads /app/.yt-dlp-logs /app/.yt-dlp-config
+chown -R "$USER_UID:$USER_GID" /app/downloads /app/.yt-dlp-logs 2>/dev/null || true
+chown "$USER_UID:$USER_GID" /app/.yt-dlp-config 2>/dev/null || true
+find /app/.yt-dlp-config -mindepth 1 -maxdepth 1 ! -name 'cookies.txt' -exec chown -R "$USER_UID:$USER_GID" {} + 2>/dev/null || true
 
 # === If first arg is a URL (not a script), prepend downloader ===
 if [[ "$1" == http* ]] || [[ "$1" == *youtube* ]] || [[ "$1" == *youtu.be* ]]; then

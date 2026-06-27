@@ -14,7 +14,7 @@ RUN apk add --no-cache \
     curl \
     su-exec \
     && python3 -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir yt-dlp \
+    && /opt/venv/bin/pip install --no-cache-dir yt-dlp curl_cffi \
     && ln -s /opt/venv/bin/yt-dlp /usr/local/bin/yt-dlp
 
 ENV PATH="/opt/venv/bin:$PATH"

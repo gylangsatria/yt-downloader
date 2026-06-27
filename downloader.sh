@@ -45,7 +45,8 @@ build_ytdlp_opts() {
 
     # Auto-use cookies.txt if available
     if [[ -f "$COOKIES_FILE" ]]; then
-        log "Using cookies: $COOKIES_FILE"
+        # Log to stderr so it doesn't leak into the options array
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using cookies: $COOKIES_FILE" | tee -a "$LOG_FILE" >&2
         opts+=("--cookies" "$COOKIES_FILE")
     fi
 
@@ -181,4 +182,3 @@ else
     # No arguments - start watch mode
     watch_mode
 fi
-                    read -p "Path baru untuk video (relative atau absolute): " new_video
