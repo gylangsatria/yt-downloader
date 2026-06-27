@@ -1,5 +1,11 @@
 #!/bin/bash
-# run.sh - Auto-detect UID/GID and run
+# ======================================================
+# YouTube Downloader v1.0.0
+# Auto-detect UID/GID and run
+# ======================================================
+# Author  : gylangsatria
+# GitHub  : https://github.com/gylangsatria
+# ======================================================
 
 set -e
 

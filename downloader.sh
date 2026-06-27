@@ -1,6 +1,10 @@
 #!/bin/bash
 # ======================================================
-# YouTube Downloader - Fully Automatic Mode
+# YouTube Downloader v1.0.0
+# Fully Automatic Mode
+# ======================================================
+# Author  : gylangsatria
+# GitHub  : https://github.com/gylangsatria
 # ======================================================
 
 # === Configuration ===

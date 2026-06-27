@@ -3,6 +3,10 @@ services:
     build:
       context: .
     container_name: yt-downloader
+    labels:
+      - "app.version=1.0.0"
+      - "app.author=gylangsatria"
+      - "app.github=https://github.com/gylangsatria"
     stdin_open: true
     tty: true
     volumes:

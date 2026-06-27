@@ -1,5 +1,11 @@
 #!/bin/bash
-# entrypoint.sh - Auto-create user & fix permissions at runtime
+# ======================================================
+# YouTube Downloader v1.0.0 - entrypoint
+# Auto-create user & fix permissions at runtime
+# ======================================================
+# Author  : gylangsatria
+# GitHub  : https://github.com/gylangsatria
+# ======================================================
 
 set -e
 
