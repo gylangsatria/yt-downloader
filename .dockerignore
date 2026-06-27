@@ -1,0 +1,12 @@
+.git/
+.gitignore
+.dockerignore
+*.md
+docs/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.env
+data/logs/
+logs/

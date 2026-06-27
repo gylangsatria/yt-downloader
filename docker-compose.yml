@@ -1,0 +1,19 @@
+services:
+  yt-downloader:
+    build:
+      context: .
+    container_name: yt-downloader
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./downloads:/app/downloads
+      - ./data/logs:/app/.yt-dlp-logs
+      - ./data/config:/app/.yt-dlp-config
+    environment:
+      - USERNAME=${USER:-appuser}
+      - USER_UID=${UID:-1000}
+      - USER_GID=${GID:-1000}
+      - VIDEO_DIR=/app/downloads/Videos
+      - MUSIC_DIR=/app/downloads/Music
+      - HOME=/app
+    restart: unless-stopped

@@ -1,0 +1,25 @@
+# Downloads (files are large, but keep folder structure)
+downloads/*
+!downloads/.gitkeep
+
+# Logs
+logs/
+data/logs/
+
+# Config history
+data/config/history.txt
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker env
+.env
+
+# Temp files
+*.tmp
+*.log
