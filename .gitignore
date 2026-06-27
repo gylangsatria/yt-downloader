@@ -6,12 +6,13 @@ downloads/*
 logs/
 data/logs/
 
-# Config history
+# Config runtime files (URL queue, history, cookies)
+data/config/queue.txt
 data/config/history.txt
+data/config/cookies.txt
 
 # Cookies (sensitive, site-specific)
 data/cookies.txt
-data/config/cookies.txt
 
 # Python cache
 __pycache__/
