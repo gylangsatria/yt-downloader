@@ -93,8 +93,8 @@ download_url() {
     # Get filename first for history
     local title=$(yt-dlp --no-playlist --get-title "$url" 2>/dev/null || echo "unknown")
 
-    # Execute download
-    if yt-dlp "${opts[@]}" 2>> "$LOG_FILE" > /dev/null; then
+    # Execute download — show progress in terminal, log everything
+    if yt-dlp "${opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
         echo "$(date '+%Y-%m-%d %H:%M:%S') | $url | best | $title" >> "$HISTORY_FILE"
         log "[SUCCESS] Downloaded: $title -> $output_dir"
         return 0
@@ -105,7 +105,7 @@ download_url() {
         local fallback_opts=(--no-playlist -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
-        if yt-dlp "${fallback_opts[@]}" 2>> "$LOG_FILE" > /dev/null; then
+        if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
             echo "$(date '+%Y-%m-%d %H:%M:%S') | $url | fallback | $title" >> "$HISTORY_FILE"
             log "[SUCCESS] Downloaded (fallback): $title -> $output_dir"
             return 0
