@@ -9,6 +9,9 @@ data/logs/
 # Config history
 data/config/history.txt
 
+# Cookies (sensitive, site-specific)
+data/cookies.txt
+
 # Python cache
 __pycache__/
 *.pyc

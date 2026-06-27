@@ -13,6 +13,8 @@ services:
       - ./downloads:/app/downloads
       - ./data/logs:/app/.yt-dlp-logs
       - ./data/config:/app/.yt-dlp-config
+      # Cookie file (optional) — export dari browser untuk akses situs proteksi
+      - ./data/cookies.txt:/app/.yt-dlp-config/cookies.txt:ro
     environment:
       - USERNAME=${USER:-appuser}
       - USER_UID=${UID:-1000}

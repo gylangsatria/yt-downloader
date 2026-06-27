@@ -81,6 +81,41 @@ AUDIO_FORMAT="ba/bestaudio"      # Format audio terbaik
 
 ---
 
+## Cookies — Akses Situs dengan Proteksi
+
+Beberapa situs dengan proteksi Cloudflare butuh **cookies browser** untuk bisa di-download.
+
+### Cara 1: Export cookies.txt (disarankan)
+
+1. Install ekstensi browser:
+   - **Chrome/Edge**: [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+   - **Firefox**: [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/)
+
+2. Buka situs target, login, lalu export cookies → simpan sebagai `data/cookies.txt`
+
+3. Selesai! Container otomatis pakai cookies itu.
+
+### Cara 2: Extract via command line (Python)
+
+```bash
+# Install browsercookie
+pip install browsercookie
+
+# Ekstrak cookies dari browser (Chrome/Edge/Firefox)
+python3 -c "
+import browsercookie, http.cookiejar
+cj = browsercookie.chrome()  # ganti .chrome() jadi .firefox() kalo pake Firefox
+with open('data/cookies.txt', 'w') as f:
+    for c in cj:
+        f.write(f'{c.domain}\tTRUE\t{c.path}\tFALSE\t{int(c.expires if c.expires else 0)}\t{c.name}\t{c.value}\n')
+print('Cookies saved to data/cookies.txt')
+"
+```
+
+> **Catatan:** `data/cookies.txt` sudah di-ignore git (via `.gitignore`).
+
+---
+
 ## Catatan
 
 - Container jalan di background (`restart: unless-stopped`)

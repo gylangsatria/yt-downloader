@@ -30,6 +30,29 @@ LOG_FILE="$LOG_DIR/download_$(date +%Y%m%d_%H%M%S).log"
 # === Logging ===
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
+# === Cookie file detection ===
+COOKIES_FILE="$CONFIG_DIR/cookies.txt"
+
+# === Build yt-dlp options ===
+build_ytdlp_opts() {
+    local opts=(
+        "--no-playlist"
+        "--merge-output-format" "mp4"
+        "--no-warnings"
+        "--restrict-filenames"
+        "--progress"
+    )
+
+    # Auto-use cookies.txt if available
+    if [[ -f "$COOKIES_FILE" ]]; then
+        log "Using cookies: $COOKIES_FILE"
+        opts+=("--cookies" "$COOKIES_FILE")
+    fi
+
+    # Return as array-safe output
+    printf '%s\n' "${opts[@]}"
+}
+
 # === Download single URL ===
 download_url() {
     local url="$1"
@@ -47,14 +70,11 @@ download_url() {
         log "Detected audio source"
     fi
 
-    # Build yt-dlp options
-    local opts=(
-        "--no-playlist"
-        "--merge-output-format" "mp4"
-        "--no-warnings"
-        "--restrict-filenames"
-        "--progress"
-    )
+    # Build yt-dlp options (readarray to handle spaces safely)
+    local opts=()
+    while IFS= read -r line; do
+        opts+=("$line")
+    done < <(build_ytdlp_opts)
 
     # Audio options
     if [[ "$is_audio" == "true" ]]; then
@@ -81,7 +101,10 @@ download_url() {
         log "[ERROR] Failed: $url"
         # Retry with basic format
         log "[RETRY] Trying fallback format..."
-        if yt-dlp --no-playlist -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s" "$url" 2>> "$LOG_FILE" > /dev/null; then
+        local fallback_opts=(--no-playlist -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
+        [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
+        fallback_opts+=("$url")
+        if yt-dlp "${fallback_opts[@]}" 2>> "$LOG_FILE" > /dev/null; then
             echo "$(date '+%Y-%m-%d %H:%M:%S') | $url | fallback | $title" >> "$HISTORY_FILE"
             log "[SUCCESS] Downloaded (fallback): $title -> $output_dir"
             return 0
