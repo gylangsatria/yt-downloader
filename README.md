@@ -15,7 +15,7 @@
 - **Watch mode** — tinggal tulis URL di `data/config/queue.txt`, container auto-proses
 - **Audio auto-detect** — URL dari SoundCloud/Bandcamp/Spotify otomatis jadi MP3
 - **Fallback otomatis** — coba berbagai format jika gagal
-- **Impersonation** — dukungan `curl_cffi` untuk situs proteksi (PornHub, dll)
+- **Impersonation** — dukungan `curl_cffi` untuk situs dengan proteksi ketat
 - **Progress bar** — tampil langsung di terminal saat download
 - **Cookies support** — export cookies browser untuk akses situs dengan proteksi
 - **Logging** — semua aktivitas tercatat di `data/logs/`
@@ -132,7 +132,7 @@ print('Cookies saved to data/config/cookies.txt')
 ## Changelog
 
 ### v1.1.0 (2026-06-27)
-- **Impersonation** — dukungan `curl_cffi` untuk situs proteksi (PornHub, dll)
+- **Impersonation** — dukungan `curl_cffi` untuk situs dengan proteksi ketat
 - **Progress bar** — tampil langsung di terminal saat download
 - **Cookies fix** — skip chown pada cookies.txt biar gak error read-only
 - **Cookies path** — pindah ke `data/config/cookies.txt` (satu folder dengan config lain)
