@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube Downloader v1.0.0
+# YouTube Downloader v1.1.0
 # Auto-detect UID/GID and run
 # ======================================================
 # Author  : gylangsatria

@@ -1,6 +1,6 @@
 FROM alpine:3.19
 
-LABEL version="1.0.0" \
+LABEL version="1.1.0" \
       description="YouTube Downloader - Automatic Mode" \
       author="gylangsatria" \
       github="https://github.com/gylangsatria"

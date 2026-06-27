@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube Downloader v1.0.0 - entrypoint
+# YouTube Downloader v1.1.0 - entrypoint
 # Auto-create user & fix permissions at runtime
 # ======================================================
 # Author  : gylangsatria

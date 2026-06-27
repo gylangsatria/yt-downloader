@@ -1,4 +1,4 @@
-# YouTube Downloader v1.0.0
+# YouTube Downloader v1.1.0
 
 > **Automatic YouTube downloader** — Tinggal run, URL otomatis terdownload ke folder host.
 
@@ -15,6 +15,9 @@
 - **Watch mode** — tinggal tulis URL di `data/config/queue.txt`, container auto-proses
 - **Audio auto-detect** — URL dari SoundCloud/Bandcamp/Spotify otomatis jadi MP3
 - **Fallback otomatis** — coba berbagai format jika gagal
+- **Impersonation** — dukungan `curl_cffi` untuk situs proteksi (PornHub, dll)
+- **Progress bar** — tampil langsung di terminal saat download
+- **Cookies support** — export cookies browser untuk akses situs dengan proteksi
 - **Logging** — semua aktivitas tercatat di `data/logs/`
 
 ---
@@ -62,7 +65,9 @@ yt-downloader/
 ├── data/
 │   ├── config/
 │   │   ├── settings.conf   # Konfigurasi format
-│   │   └── queue.txt       # Queue URL (tulis URL di sini)
+│   │   ├── queue.txt       # Queue URL (tulis URL di sini)
+│   │   ├── history.txt     # Riwayat download
+│   │   └── cookies.txt     # Cookies browser (optional)
 │   └── logs/               # Log otomatis
 ├── .gitignore
 └── .dockerignore
@@ -91,7 +96,7 @@ Beberapa situs dengan proteksi Cloudflare butuh **cookies browser** untuk bisa d
    - **Chrome/Edge**: [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
    - **Firefox**: [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/)
 
-2. Buka situs target, login, lalu export cookies → simpan sebagai `data/cookies.txt`
+2. Buka situs target, login, lalu export cookies → simpan sebagai `data/config/cookies.txt`
 
 3. Selesai! Container otomatis pakai cookies itu.
 
@@ -105,14 +110,14 @@ pip install browsercookie
 python3 -c "
 import browsercookie, http.cookiejar
 cj = browsercookie.chrome()  # ganti .chrome() jadi .firefox() kalo pake Firefox
-with open('data/cookies.txt', 'w') as f:
+with open('data/config/cookies.txt', 'w') as f:
     for c in cj:
         f.write(f'{c.domain}\tTRUE\t{c.path}\tFALSE\t{int(c.expires if c.expires else 0)}\t{c.name}\t{c.value}\n')
-print('Cookies saved to data/cookies.txt')
+print('Cookies saved to data/config/cookies.txt')
 "
 ```
 
-> **Catatan:** `data/cookies.txt` sudah di-ignore git (via `.gitignore`).
+> **Catatan:** `data/config/cookies.txt` sudah di-ignore git (via `.gitignore`).
 
 ---
 
@@ -125,6 +130,13 @@ print('Cookies saved to data/cookies.txt')
 ---
 
 ## Changelog
+
+### v1.1.0 (2026-06-27)
+- **Impersonation** — dukungan `curl_cffi` untuk situs proteksi (PornHub, dll)
+- **Progress bar** — tampil langsung di terminal saat download
+- **Cookies fix** — skip chown pada cookies.txt biar gak error read-only
+- **Cookies path** — pindah ke `data/config/cookies.txt` (satu folder dengan config lain)
+- **Stray code** — hapus prompt "Path baru untuk video" yang nyangkut
 
 ### v1.0.0 (2026-06-27)
 - **Rilis perdana** — YouTube Downloader fully automatic
