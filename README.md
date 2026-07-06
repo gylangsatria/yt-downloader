@@ -155,21 +155,7 @@ print('Cookies saved to data/config/cookies.txt')
 
 ## Changelog
 
-### v1.1.0 (2026-06-27)
-- **Impersonation** — dukungan `curl_cffi` untuk situs dengan proteksi ketat
-- **Progress bar** — tampil langsung di terminal saat download
-- **Cookies fix** — skip chown pada cookies.txt biar gak error read-only
-- **Cookies path** — pindah ke `data/config/cookies.txt` (satu folder dengan config lain)
-- **Stray code** — hapus prompt "Path baru untuk video" yang nyangkut
-
-### v1.0.0 (2026-06-27)
-- **Rilis perdana** — YouTube Downloader fully automatic
-- Docker Alpine + yt-dlp + ffmpeg
-- Auto UID/GID — no more permission issues
-- Watch mode — queue URL otomatis terdownload
-- Audio auto-detect (SoundCloud, Bandcamp, Spotify → MP3)
-- Logging & history otomatis
-- Konfigurasi via `settings.conf`
+Lihat [CHANGELOG.md](CHANGELOG.md) untuk riwayat perubahan lengkap.
 
 ---
 
