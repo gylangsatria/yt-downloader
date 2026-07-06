@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube Downloader v1.1.0
+# YouTube/Twitter Downloader v2.0.0
 # Fully Automatic Mode
 # ======================================================
 # Author  : gylangsatria
@@ -71,6 +71,13 @@ download_url() {
         log "Detected audio source"
     fi
 
+    # Auto-detect Twitter/X URLs — they need special options
+    local is_twitter=false
+    if echo "$url" | grep -qiE '(twitter\.com|x\.com)'; then
+        is_twitter=true
+        log "Detected Twitter/X source"
+    fi
+
     # Build yt-dlp options (readarray to handle spaces safely)
     local opts=()
     while IFS= read -r line; do
@@ -82,6 +89,11 @@ download_url() {
         opts+=("-x" "--audio-format" "mp3" "--audio-quality" "0")
         opts+=("--add-metadata" "--embed-thumbnail")
         opts+=("-f" "$AUDIO_FORMAT")
+    elif [[ "$is_twitter" == "true" ]]; then
+        # Twitter/X: download all available qualities, prefer highest quality, embed metadata
+        opts+=("-f" "best[ext=mp4]/best")
+        opts+=("--embed-metadata")
+        opts+=("--throttled-rate" "100M")
     else
         opts+=("-f" "$DEFAULT_FORMAT")
     fi

@@ -1,6 +1,6 @@
-# YouTube Downloader v1.1.0
+# YouTube Downloader v2.0.0
 
-> **Automatic YouTube downloader** — Tinggal run, URL otomatis terdownload ke folder host.
+> **Automatic YouTube & Twitter/X Downloader** — Tinggal run, URL otomatis terdownload ke folder host.
 
 ![Docker](https://img.shields.io/badge/Docker-Alpine-blue?logo=docker)
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-green)
@@ -14,6 +14,7 @@
 - **Dual mode** — download via argument atau queue file
 - **Watch mode** — tinggal tulis URL di `data/config/queue.txt`, container auto-proses
 - **Audio auto-detect** — URL dari SoundCloud/Bandcamp/Spotify otomatis jadi MP3
+- **Twitter/X support** — download video dari Twitter/X dengan kualitas terbaik
 - **Fallback otomatis** — coba berbagai format jika gagal
 - **Impersonation** — dukungan `curl_cffi` untuk situs dengan proteksi ketat
 - **Progress bar** — tampil langsung di terminal saat download
@@ -33,7 +34,12 @@
 ### 2a. Download langsung
 
 ```bash
+# YouTube
 ./run.sh "https://youtube.com/watch?v=..."
+
+# Twitter/X
+./run.sh "https://x.com/user/status/2072712422025023645"
+./run.sh "https://twitter.com/user/status/2072712422025023645"
 ```
 
 ### 2b. Queue URL (auto-process)
@@ -86,9 +92,27 @@ AUDIO_FORMAT="ba/bestaudio"      # Format audio terbaik
 
 ---
 
+## Twitter/X — Catatan Penting
+
+Twitter/X **membutuhkan cookies** dari akun yang sudah login. Video publik sekalipun sering tidak bisa di-download tanpa cookies karena pembatasan dari Twitter.
+
+**Langkah-langkah:**
+1. Buka Twitter/X.com di browser
+2. Login ke akun Twitter (akun gratisan sudah cukup)
+3. Export cookies ke `data/config/cookies.txt` (lihat panduan cookies di bawah)
+4. Download URL Twitter/X seperti biasa
+
+```bash
+./run.sh "https://x.com/i/status/2072712422025023645"
+```
+
+> **Tips:** Jika muncul error "Twitter requires logging in", berarti cookies-mu expired. Export ulang cookies dari browser.
+
+---
+
 ## Cookies — Akses Situs dengan Proteksi
 
-Beberapa situs dengan proteksi Cloudflare butuh **cookies browser** untuk bisa di-download.
+Beberapa situs dengan proteksi Cloudflare atau yang butuh autentikasi (seperti Twitter/X) butuh **cookies browser** untuk bisa di-download.
 
 ### Cara 1: Export cookies.txt (disarankan)
 

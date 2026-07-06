@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube Downloader v1.1.0 - entrypoint
+# YouTube/Twitter Downloader v2.0.0 - entrypoint
 # Auto-create user & fix permissions at runtime
 # ======================================================
 # Author  : gylangsatria
@@ -41,7 +41,7 @@ chown "$USER_UID:$USER_GID" /app/.yt-dlp-config 2>/dev/null || true
 find /app/.yt-dlp-config -mindepth 1 -maxdepth 1 ! -name 'cookies.txt' -exec chown -R "$USER_UID:$USER_GID" {} + 2>/dev/null || true
 
 # === If first arg is a URL (not a script), prepend downloader ===
-if [[ "$1" == http* ]] || [[ "$1" == *youtube* ]] || [[ "$1" == *youtu.be* ]]; then
+if [[ "$1" == http* ]] || [[ "$1" == *youtube* ]] || [[ "$1" == *youtu.be* ]] || [[ "$1" == *twitter.com* ]] || [[ "$1" == *x.com* ]]; then
     exec su-exec "$USERNAME" /app/downloader.sh "$@"
 fi
 
