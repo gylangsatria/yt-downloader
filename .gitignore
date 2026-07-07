@@ -9,6 +9,8 @@ data/logs/
 # Config runtime files (URL queue, history, cookies)
 data/config/queue.txt
 data/config/history.txt
+data/config/history.db
+data/config/.migrated
 data/config/cookies.txt
 
 # Cookies (sensitive, site-specific)

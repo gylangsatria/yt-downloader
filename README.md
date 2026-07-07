@@ -1,4 +1,4 @@
-# YouTube Downloader v2.0.0
+# YouTube Downloader v2.1.0
 
 > **Automatic YouTube & Twitter/X Downloader** — Tinggal run, URL otomatis terdownload ke folder host.
 
@@ -16,6 +16,8 @@
 - **Audio auto-detect** — URL dari SoundCloud/Bandcamp/Spotify otomatis jadi MP3
 - **Twitter/X support** — download video dari Twitter/X dengan kualitas terbaik
 - **Fallback otomatis** — coba berbagai format jika gagal
+- **Duplicate detection** — URL yang sudah pernah di-download otomatis di-skip
+- **SQLite History** — riwayat download tersimpan rapi di database SQLite
 - **Impersonation** — dukungan `curl_cffi` untuk situs dengan proteksi ketat
 - **Progress bar** — tampil langsung di terminal saat download
 - **Cookies support** — export cookies browser untuk akses situs dengan proteksi
@@ -60,10 +62,11 @@ docker exec yt-downloader ./downloader.sh "https://youtube.com/watch?v=..."
 
 ```
 yt-downloader/
-├── Dockerfile              # Alpine + yt-dlp + ffmpeg
+├── Dockerfile              # Alpine + yt-dlp + ffmpeg + sqlite
 ├── docker-compose.yml      # Auto UID/GID
 ├── entrypoint.sh           # Runtime user creation
 ├── downloader.sh           # Main downloader (watch/argument mode)
+├── db_history.sh           # SQLite download history module
 ├── run.sh                  # One-command launcher
 ├── downloads/
 │   ├── Videos/             # Hasil download video
@@ -72,12 +75,41 @@ yt-downloader/
 │   ├── config/
 │   │   ├── settings.conf   # Konfigurasi format
 │   │   ├── queue.txt       # Queue URL (tulis URL di sini)
-│   │   ├── history.txt     # Riwayat download
+│   │   ├── history.txt     # Riwayat download lama (text format)
+│   │   ├── history.db      # Riwayat download (SQLite, otomatis)
 │   │   └── cookies.txt     # Cookies browser (optional)
 │   └── logs/               # Log otomatis
 ├── .gitignore
 └── .dockerignore
 ```
+
+---
+
+## SQLite Download History
+
+Mulai v2.1.0, riwayat download disimpan di **SQLite database** (`data/config/history.db`).
+Otomatis migrasi dari `history.txt` saat pertama kali jalan.
+
+### Command tersedia:
+
+```bash
+# Lihat 10 download terakhir
+docker compose exec yt-downloader /app/db_history.sh recent 10
+
+# Statistik download
+docker compose exec yt-downloader /app/db_history.sh stats
+
+# Cek apakah URL sudah pernah di-download
+docker compose exec yt-downloader /app/db_history.sh exists "https://youtube.com/watch?v=..."
+
+# Lihat info detail suatu URL
+docker compose exec yt-downloader /app/db_history.sh info "https://youtube.com/watch?v=..."
+
+# Migrasi manual dari history.txt
+docker compose exec yt-downloader /app/db_history.sh migrate
+```
+
+> **Catatan:** Database `history.db` akan otomatis ter-create dan ter-migrasi dari `history.txt` saat container pertama kali jalan. Tidak perlu setup manual.
 
 ---
 
@@ -149,7 +181,8 @@ print('Cookies saved to data/config/cookies.txt')
 
 - Container jalan di background (`restart: unless-stopped`)
 - File download otomatis ter-ignore dari git
-- History download tersimpan di `data/config/history.txt`
+- History download tersimpan di SQLite (`data/config/history.db`) — migrasi otomatis dari `history.txt`
+- URL yang sudah pernah di-download akan otomatis di-skip (cek duplikasi)
 
 ---
 
@@ -167,3 +200,4 @@ Powered by:
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/)
 - [Alpine Linux](https://alpinelinux.org/)
+- [SQLite](https://www.sqlite.org/)

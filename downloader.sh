@@ -1,7 +1,7 @@
 #!/bin/bash
 # ======================================================
-# YouTube/Twitter Downloader v2.0.0
-# Fully Automatic Mode
+# YouTube/Twitter Downloader v2.1.0
+# Fully Automatic Mode - SQLite History
 # ======================================================
 # Author  : gylangsatria
 # GitHub  : https://github.com/gylangsatria
@@ -15,8 +15,20 @@ CONFIG_DIR="${CONFIG_DIR:-/app/.yt-dlp-config}"
 QUEUE_FILE="$CONFIG_DIR/queue.txt"
 HISTORY_FILE="$CONFIG_DIR/history.txt"
 CONFIG_FILE="$CONFIG_DIR/settings.conf"
+DB_FILE="${DB_FILE:-$CONFIG_DIR/history.db}"
 
 mkdir -p "$VIDEO_DIR" "$MUSIC_DIR" "$LOG_DIR" "$CONFIG_DIR"
+
+# === Source DB module ===
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/db_history.sh"
+
+# === Initialize database and migrate old history ===
+db_init
+if [[ -f "$HISTORY_FILE" ]] && [[ ! -f "$CONFIG_DIR/.migrated" ]]; then
+    db_migrate_from_txt "$HISTORY_FILE"
+    touch "$CONFIG_DIR/.migrated"
+fi
 
 # === Load config ===
 [[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
@@ -61,6 +73,25 @@ download_url() {
     local output_dir="$VIDEO_DIR"
     local is_audio=false
 
+    # === Check if already downloaded ===
+    if db_url_exists "$url"; then
+        local existing_info
+        existing_info=$(db_get_info "$url")
+        local existing_title
+        existing_title=$(echo "$existing_info" | cut -d'|' -f1)
+        local existing_status
+        existing_status=$(echo "$existing_info" | cut -d'|' -f3)
+        local existing_date
+        existing_date=$(echo "$existing_info" | cut -d'|' -f5)
+
+        if [[ "$existing_status" == "success" ]]; then
+            log "[SKIP] Already downloaded on $existing_date: ${existing_title:-$url}"
+            return 0
+        elif [[ "$existing_status" == "failed" ]]; then
+            log "[RETRY] Previously failed on $existing_date, retrying: $url"
+        fi
+    fi
+
     log "====== Download started: $url ======"
 
     # Auto-detect audio-only URLs (music sites)
@@ -103,22 +134,36 @@ download_url() {
     opts+=("$url")
 
     # Get filename first for history
-    local title=$(yt-dlp --no-playlist --get-title "$url" 2>/dev/null || echo "unknown")
+    local title
+    title=$(yt-dlp --no-playlist --get-title "$url" 2>/dev/null || echo "unknown")
+
+    # Get output file info from yt-dlp print template
+    local file_path=""
+    local file_size=0
 
     # Execute download — show progress in terminal, log everything
     if yt-dlp "${opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') | $url | best | $title" >> "$HISTORY_FILE"
+        # Try to get the actual file path from yt-dlp (ignore NA values)
+        file_path=$(yt-dlp --no-playlist --print "filepath" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo "")
+        file_size=$(yt-dlp --no-playlist --print "filesize" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo 0)
+
+        # Record to SQLite instead of text file
+        db_record_success "$url" "$title" "best" "$file_path" "$file_size" "0"
         log "[SUCCESS] Downloaded: $title -> $output_dir"
         return 0
     else
         log "[ERROR] Failed: $url"
+        db_record_failure "$url" "$title" "best"
+
         # Retry with basic format
         log "[RETRY] Trying fallback format..."
         local fallback_opts=(--no-playlist -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-            echo "$(date '+%Y-%m-%d %H:%M:%S') | $url | fallback | $title" >> "$HISTORY_FILE"
+            file_path=$(yt-dlp --no-playlist --print "filepath" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo "")
+            file_size=$(yt-dlp --no-playlist --print "filesize" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo 0)
+            db_record_success "$url" "$title" "fallback" "$file_path" "$file_size" "0"
             log "[SUCCESS] Downloaded (fallback): $title -> $output_dir"
             return 0
         else

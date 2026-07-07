@@ -13,6 +13,7 @@ RUN apk add --no-cache \
     bash \
     curl \
     su-exec \
+    sqlite \
     && python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir yt-dlp curl_cffi \
     && ln -s /opt/venv/bin/yt-dlp /usr/local/bin/yt-dlp
@@ -24,7 +25,8 @@ WORKDIR /app
 # Copy scripts
 COPY entrypoint.sh /entrypoint.sh
 COPY downloader.sh /app/downloader.sh
-RUN chmod +x /entrypoint.sh /app/downloader.sh
+COPY db_history.sh /app/db_history.sh
+RUN chmod +x /entrypoint.sh /app/downloader.sh /app/db_history.sh
 
 # Default environment variables
 ENV USERNAME=appuser
