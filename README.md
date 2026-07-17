@@ -1,6 +1,6 @@
-# YouTube & Twitter/X Downloader v2.1.0
+# YouTube Downloader v2.1.0
 
-> **Automatic YouTube & Twitter/X Downloader** — Just run it, URLs get downloaded automatically to your host folder.
+> **Automatic YouTube Downloader** — Just run it, URLs get downloaded automatically to your host folder.
 
 ![Docker](https://img.shields.io/badge/Docker-Alpine-blue?logo=docker)
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-green)
