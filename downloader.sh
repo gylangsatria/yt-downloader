@@ -49,7 +49,6 @@ COOKIES_FILE="$CONFIG_DIR/cookies.txt"
 build_ytdlp_opts() {
     local opts=(
         "--no-playlist"
-        "--merge-output-format" "mp4"
         "--no-warnings"
         "--restrict-filenames"
         "--progress"
@@ -65,6 +64,9 @@ build_ytdlp_opts() {
     # Return as array-safe output
     printf '%s\n' "${opts[@]}"
 }
+
+# Clean up logs older than 7 days
+find "$LOG_DIR" -name 'download_*.log' -mtime +7 -delete 2>/dev/null || true
 
 # === Download single URL ===
 download_url() {
@@ -117,15 +119,18 @@ download_url() {
 
     # Audio options
     if [[ "$is_audio" == "true" ]]; then
+        opts+=("--merge-output-format" "mp4")
         opts+=("-x" "--audio-format" "mp3" "--audio-quality" "0")
         opts+=("--add-metadata" "--embed-thumbnail")
         opts+=("-f" "$AUDIO_FORMAT")
     elif [[ "$is_twitter" == "true" ]]; then
         # Twitter/X: download all available qualities, prefer highest quality, embed metadata
+        opts+=("--merge-output-format" "mp4")
         opts+=("-f" "best[ext=mp4]/best")
         opts+=("--embed-metadata")
         opts+=("--throttled-rate" "100M")
     else
+        opts+=("--merge-output-format" "mp4")
         opts+=("-f" "$DEFAULT_FORMAT")
     fi
 
@@ -133,21 +138,26 @@ download_url() {
     opts+=("-o" "%(title).200s.%(ext)s")
     opts+=("$url")
 
-    # Get filename first for history
+    # Get title for history — use --print instead of deprecated --get-title
     local title
-    title=$(yt-dlp --no-playlist --get-title "$url" 2>/dev/null || echo "unknown")
-
-    # Get output file info from yt-dlp print template
-    local file_path=""
-    local file_size=0
+    title=$(yt-dlp --no-playlist --print "%(title)s" "$url" 2>/dev/null || echo "unknown")
 
     # Execute download — show progress in terminal, log everything
     if yt-dlp "${opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-        # Try to get the actual file path from yt-dlp (ignore NA values)
-        file_path=$(yt-dlp --no-playlist --print "filepath" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo "")
-        file_size=$(yt-dlp --no-playlist --print "filesize" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo 0)
+        # Get the actual file path without an extra yt-dlp request:
+        # Scan the output dir for the most recently modified file
+        local file_path=""
+        local file_size=0
+        file_path=$(find "$output_dir" -maxdepth 1 -type f -newer "$QUEUE_FILE" -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
+        if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
+            # Fallback: just get the most recently modified file in the dir
+            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
+        fi
+        if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
+        fi
 
-        # Record to SQLite instead of text file
+        # Record to SQLite
         db_record_success "$url" "$title" "best" "$file_path" "$file_size" "0"
         log "[SUCCESS] Downloaded: $title -> $output_dir"
         return 0
@@ -157,12 +167,16 @@ download_url() {
 
         # Retry with basic format
         log "[RETRY] Trying fallback format..."
-        local fallback_opts=(--no-playlist -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
+        local fallback_opts=(--no-playlist --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-            file_path=$(yt-dlp --no-playlist --print "filepath" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo "")
-            file_size=$(yt-dlp --no-playlist --print "filesize" "$url" 2>/dev/null | grep -v '^NA$' | head -1 || echo 0)
+            local file_path=""
+            local file_size=0
+            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
+            if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
+                file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
+            fi
             db_record_success "$url" "$title" "fallback" "$file_path" "$file_size" "0"
             log "[SUCCESS] Downloaded (fallback): $title -> $output_dir"
             return 0
@@ -173,7 +187,7 @@ download_url() {
     fi
 }
 
-# === Proper queue processing ===
+# === Proper queue processing — line-by-line to avoid race conditions ===
 process_queue_safe() {
     if [[ ! -f "$QUEUE_FILE" ]]; then
         touch "$QUEUE_FILE"
@@ -182,6 +196,11 @@ process_queue_safe() {
 
     local processed=0
 
+    # Snapshot the current queue and process only those lines
+    local snapshot
+    snapshot=$(mktemp "$QUEUE_FILE.snapshot.XXXXXX") 2>/dev/null || snapshot="${QUEUE_FILE}.snapshot"
+    cp "$QUEUE_FILE" "$snapshot" 2>/dev/null
+
     while IFS= read -r line || [[ -n "$line" ]]; do
         line="$(echo "$line" | tr -d '\r' | xargs)"
         [[ -z "$line" ]] && continue
@@ -189,10 +208,26 @@ process_queue_safe() {
 
         ((processed++))
         download_url "$line"
-    done < "$QUEUE_FILE"
+    done < "$snapshot"
 
-    # Clear the queue after processing
-    > "$QUEUE_FILE"
+    # Remove only the lines that were in the snapshot from the queue
+    # This preserves any URLs added while processing was running
+    if [[ -f "$snapshot" ]]; then
+        local temp_queue
+        temp_queue=$(mktemp "$QUEUE_FILE.tmp.XXXXXX") 2>/dev/null || temp_queue="${QUEUE_FILE}.tmp"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            line="$(echo "$line" | tr -d '\r' | xargs)"
+            [[ -z "$line" ]] && continue
+            # Skip lines that were in the snapshot (already processed)
+            if ! grep -qF "$line" "$snapshot" 2>/dev/null; then
+                echo "$line" >> "$temp_queue"
+            fi
+        done < "$QUEUE_FILE"
+        mv "$temp_queue" "$QUEUE_FILE" 2>/dev/null || cp "$temp_queue" "$QUEUE_FILE"
+        rm -f "$temp_queue" 2>/dev/null
+    fi
+
+    rm -f "$snapshot" "${QUEUE_FILE}.snapshot"* 2>/dev/null
 
     if [[ "$processed" -gt 0 ]]; then
         log "Queue processed: $processed item(s)"

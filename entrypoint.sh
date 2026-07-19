@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube/Twitter Downloader v2.0.0 - entrypoint
+# YouTube/Twitter Downloader v2.1.0 - entrypoint
 # Auto-create user & fix permissions at runtime
 # ======================================================
 # Author  : gylangsatria
@@ -14,19 +14,24 @@ USERNAME="${USERNAME:-appuser}"
 USER_UID="${USER_UID:-1000}"
 USER_GID="${USER_GID:-1000}"
 
-# === Create user with matching UID/GID ===
+# === Create group with matching GID ===
 if ! getent group "$USER_GID" > /dev/null 2>&1; then
     addgroup -g "$USER_GID" "$USERNAME"
-else
-    EXISTING_GROUP=$(getent group "$USER_GID" | cut -d: -f1)
-    if [ "$EXISTING_GROUP" != "$USERNAME" ]; then
-        USERNAME="$EXISTING_GROUP"
-    fi
 fi
 
-if ! id -u "$USERNAME" > /dev/null 2>&1; then
-    adduser -D -u "$USER_UID" -G "$USERNAME" "$USERNAME"
+# Create user with matching UID
+if ! id -u "$USER_UID" > /dev/null 2>&1; then
+    if getent group "$USER_GID" > /dev/null 2>&1; then
+        # Group exists, create user with that existing group
+        EXISTING_GROUP_NAME=$(getent group "$USER_GID" | cut -d: -f1)
+        adduser -D -u "$USER_UID" -G "$EXISTING_GROUP_NAME" "$USERNAME"
+    else
+        # Group and user both new
+        adduser -D -u "$USER_UID" -G "$USERNAME" "$USERNAME"
+    fi
 fi
+# Re-evaluate username from UID in case it was created with a different group name
+USERNAME=$(id -nu "$USER_UID" 2>/dev/null || echo "$USERNAME")
 
 # === Fix permissions on all mounted directories ===
 chown -R "$USER_UID:$USER_GID" /app/downloads 2>/dev/null || true

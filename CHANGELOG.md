@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.1.1 (2026-07-19)
+### Fixed
+- **Race condition on queue file** — `process_queue_safe()` now takes a snapshot before processing, preventing URLs added mid-download from being lost. Preserves new entries added during processing.
+- **Deprecated `--get-title` flag** — replaced with `--print` to stay compatible with latest yt-dlp.
+- **Redundant yt-dlp requests after download** — file path and size are now obtained via local filesystem (`find` + `stat`) instead of making additional HTTP requests.
+- **User/group creation in Alpine container (`entrypoint.sh`)** — fixed shell syntax error (`local` keyword outside function) and improved group conflict resolution when the target GID already exists as a system group.
+- **Watch mode inefficiency** — installed `inotify-tools` in Docker image so watch mode uses event-driven notification instead of 5-second polling.
+- **Missing `findutils` dependency** — added `findutils` to Docker image for `find -printf` support used in file detection.
+- **Log files never cleaned** — logs older than 7 days are now automatically deleted.
+- **Version inconsistency** — all files (`Dockerfile`, `docker-compose.yml`, `entrypoint.sh`, `run.sh`) now consistently reference v2.1.1.
+
+### Changed
+- `--merge-output-format mp4` moved from global `build_ytdlp_opts()` into per-category blocks (audio/twitter/default) for better clarity.
+- `downloader.sh` — log cleanup routine added before download operations.
+- `Dockerfile` — added `inotify-tools` and `findutils` packages.
+
 ## v2.1.0 (2026-07-07)
 ### Added
 - **SQLite Download History** — migrated download history from text file to SQLite database

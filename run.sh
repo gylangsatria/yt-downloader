@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube/Twitter Downloader v2.0.0
+# YouTube/Twitter Downloader v2.1.0
 # Auto-detect UID/GID and run
 # ======================================================
 # Author  : gylangsatria

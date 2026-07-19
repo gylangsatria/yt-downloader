@@ -1,6 +1,6 @@
 FROM alpine:3.19
 
-LABEL version="2.0.0" \
+LABEL version="2.1.0" \
       description="YouTube/Twitter Downloader - Automatic Mode" \
       author="gylangsatria" \
       github="https://github.com/gylangsatria"
@@ -14,6 +14,8 @@ RUN apk add --no-cache \
     curl \
     su-exec \
     sqlite \
+    inotify-tools \
+    findutils \
     && python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir yt-dlp curl_cffi \
     && ln -s /opt/venv/bin/yt-dlp /usr/local/bin/yt-dlp
