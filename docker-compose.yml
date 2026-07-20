@@ -4,7 +4,7 @@ services:
       context: .
     container_name: yt-downloader
     labels:
-      - "app.version=2.1.0"
+      - "app.version=2.1.2"
       - "app.author=gylangsatria"
       - "app.github=https://github.com/gylangsatria"
     stdin_open: true

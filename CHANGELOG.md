@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.2 (2026-07-20)
+### Fixed
+- **SQLite separator conflict** — Used ASCII Unit Separator (`\x1f`) instead of `|` for internal database communication, fixing broken history checks for titles containing pipes.
+- **Protected video titles** — Added cookie support to title extraction, preventing "unknown" titles when downloading from sites requiring authentication (like Twitter/X).
+- **Reliable file path detection** — Replaced fragile `find -newer` logic with native `yt-dlp --print after_move:filepath` for 100% accurate file tracking even if the queue file is modified during download.
+- **SQLite robustness** — Added checks for empty database results to prevent bash syntax errors if the database is locked or inaccessible.
+- **Security hardening** — Added sanitization for the `limit` argument in `db_history.sh`.
+- **Version consistency** — Synced version strings across all scripts and configuration files.
+
 ## v2.1.1 (2026-07-19)
 ### Fixed
 - **Race condition on queue file** — `process_queue_safe()` now takes a snapshot before processing, preventing URLs added mid-download from being lost. Preserves new entries added during processing.

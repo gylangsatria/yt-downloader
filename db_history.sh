@@ -53,8 +53,8 @@ SQL
 db_url_exists() {
     local url="$1"
     local count
-    count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM downloads WHERE url = '$(sqlite3_escape "$url")'")
-    [[ "$count" -gt 0 ]]
+    count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM downloads WHERE url = '$(sqlite3_escape "$url")'" 2>/dev/null)
+    [[ -n "$count" ]] && [[ "$count" -gt 0 ]]
 }
 
 # === Sanitize numeric value (force to integer, default 0) ===
@@ -110,15 +110,16 @@ SQL
 }
 
 # === Get download info for a URL ===
-# Prints: title|format|status|file_path|downloaded_at
+# Prints fields separated by ASCII Unit Separator (hex 1F)
 db_get_info() {
     local url="$1"
-    sqlite3 "$DB_FILE" "SELECT title, format, status, file_path, downloaded_at FROM downloads WHERE url = '$(sqlite3_escape "$url")'" -separator '|'
+    # Use ASCII Unit Separator \x1F as it is extremely unlikely to be in a title
+    sqlite3 "$DB_FILE" "SELECT title, format, status, file_path, downloaded_at FROM downloads WHERE url = '$(sqlite3_escape "$url")'" -separator $'\x1f'
 }
 
 # === List recent downloads ===
 db_list_recent() {
-    local limit="${1:-20}"
+    local limit=$(sanitize_num "${1:-20}")
     sqlite3 "$DB_FILE" "SELECT id, url, title, status, downloaded_at FROM downloads ORDER BY downloaded_at DESC LIMIT $limit" -separator ' | ' -header
 }
 

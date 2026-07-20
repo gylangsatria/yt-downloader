@@ -1,4 +1,4 @@
-# YT-Downloader v2.1.1
+# YT-Downloader v2.1.2
 
 > **Automatic Video Downloader** — Just run it, URLs get downloaded automatically to your host folder.
 

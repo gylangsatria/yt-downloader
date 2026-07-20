@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube/Twitter Downloader v2.1.0 - entrypoint
+# YouTube/Twitter Downloader v2.1.2 - entrypoint
 # Auto-create user & fix permissions at runtime
 # ======================================================
 # Author  : gylangsatria

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================
-# YouTube/Twitter Downloader v2.1.0
+# YouTube/Twitter Downloader v2.1.2
 # Fully Automatic Mode - SQLite History
 # ======================================================
 # Author  : gylangsatria
@@ -79,12 +79,12 @@ download_url() {
     if db_url_exists "$url"; then
         local existing_info
         existing_info=$(db_get_info "$url")
-        local existing_title
-        existing_title=$(echo "$existing_info" | cut -d'|' -f1)
-        local existing_status
-        existing_status=$(echo "$existing_info" | cut -d'|' -f3)
-        local existing_date
-        existing_date=$(echo "$existing_info" | cut -d'|' -f5)
+        
+        # Use ASCII Unit Separator to split
+        local existing_title existing_status existing_date
+        existing_title=$(echo "$existing_info" | awk -F$'\x1f' '{print $1}')
+        existing_status=$(echo "$existing_info" | awk -F$'\x1f' '{print $3}')
+        existing_date=$(echo "$existing_info" | awk -F$'\x1f' '{print $5}')
 
         if [[ "$existing_status" == "success" ]]; then
             log "[SKIP] Already downloaded on $existing_date: ${existing_title:-$url}"
@@ -138,21 +138,21 @@ download_url() {
     opts+=("-o" "%(title).200s.%(ext)s")
     opts+=("$url")
 
-    # Get title for history — use --print instead of deprecated --get-title
+    # Get title for history — use cookies if available
+    local title_opts=(--no-playlist --print "%(title)s")
+    [[ -f "$COOKIES_FILE" ]] && title_opts+=(--cookies "$COOKIES_FILE")
+    
     local title
-    title=$(yt-dlp --no-playlist --print "%(title)s" "$url" 2>/dev/null || echo "unknown")
+    title=$(yt-dlp "${title_opts[@]}" "$url" 2>/dev/null || echo "unknown")
 
     # Execute download — show progress in terminal, log everything
-    if yt-dlp "${opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-        # Get the actual file path without an extra yt-dlp request:
-        # Scan the output dir for the most recently modified file
-        local file_path=""
+    # Use --print after_move:filepath to get the actual file path reliably
+    local file_path
+    if file_path=$(yt-dlp "${opts[@]}" --print after_move:filepath 2> >(tee -a "$LOG_FILE" >&2)); then
+        # If multiple lines returned (e.g. thumbnail), take the last one which is usually the media file
+        file_path=$(echo "$file_path" | tail -n1)
+        
         local file_size=0
-        file_path=$(find "$output_dir" -maxdepth 1 -type f -newer "$QUEUE_FILE" -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
-        if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
-            # Fallback: just get the most recently modified file in the dir
-            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
-        fi
         if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
             file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
         fi
@@ -167,17 +167,18 @@ download_url() {
 
         # Retry with basic format
         log "[RETRY] Trying fallback format..."
-        local fallback_opts=(--no-playlist --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
+        local fallback_opts=(--no-playlist --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s" --print after_move:filepath)
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
-        if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-            local file_path=""
+        
+        local fallback_file_path
+        if fallback_file_path=$(yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2)); then
+            fallback_file_path=$(echo "$fallback_file_path" | tail -n1)
             local file_size=0
-            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
-            if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
-                file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
+            if [[ -n "$fallback_file_path" ]] && [[ -f "$fallback_file_path" ]]; then
+                file_size=$(stat -c%s "$fallback_file_path" 2>/dev/null || echo 0)
             fi
-            db_record_success "$url" "$title" "fallback" "$file_path" "$file_size" "0"
+            db_record_success "$url" "$title" "fallback" "$fallback_file_path" "$file_size" "0"
             log "[SUCCESS] Downloaded (fallback): $title -> $output_dir"
             return 0
         else
