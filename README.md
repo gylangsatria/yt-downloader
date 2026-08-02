@@ -18,6 +18,7 @@
 - **Auto fallback** — Tries various formats if the primary method fails
 - **Duplicate detection** — URLs that have already been downloaded are automatically skipped
 - **SQLite History** — Download history stored neatly in a SQLite database
+- **Platform Organization** — Downloads are automatically sorted into subfolders by platform (YouTube, Twitter, etc.)
 - **Impersonation** — `curl_cffi` support for sites with strict protection
 - **Progress bar** — Displayed directly in the terminal during downloads
 - **Cookies support** — Export browser cookies to access protected sites
@@ -69,8 +70,8 @@ yt-downloader/
 ├── db_history.sh           # SQLite download history module
 ├── run.sh                  # One-command launcher
 ├── downloads/
-│   ├── Videos/             # Video downloads
-│   └── Music/              # Audio downloads (MP3)
+│   ├── Videos/             # Video downloads (organized by platform subfolder)
+│   └── Music/              # Audio downloads (organized by platform subfolder)
 ├── data/
 │   ├── config/
 │   │   ├── settings.conf   # Format configuration

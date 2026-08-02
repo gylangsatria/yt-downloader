@@ -111,6 +111,14 @@ download_url() {
         log "Detected Twitter/X source"
     fi
 
+    # Subfolder organization by extractor
+    local extractor
+    extractor=$(yt-dlp --no-playlist --print "extractor" "$url" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/ /_/g')
+    [[ -z "$extractor" ]] && extractor="generic"
+    
+    output_dir="$output_dir/$extractor"
+    mkdir -p "$output_dir"
+
     # Build yt-dlp options (readarray to handle spaces safely)
     local opts=()
     while IFS= read -r line; do
