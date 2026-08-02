@@ -148,10 +148,10 @@ download_url() {
         # Scan the output dir for the most recently modified file
         local file_path=""
         local file_size=0
-        file_path=$(find "$output_dir" -maxdepth 1 -type f -newer "$QUEUE_FILE" -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
+        file_path=$(find "$output_dir" -maxdepth 1 -type f -newer "$QUEUE_FILE" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
         if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
             # Fallback: just get the most recently modified file in the dir
-            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
+            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
         fi
         if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
             file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
@@ -173,7 +173,7 @@ download_url() {
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
             local file_path=""
             local file_size=0
-            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\0' 2>/dev/null | sort -rnz | head -z -n1 | tr '\0' '\n' | cut -d' ' -f2- || echo "")
+            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
             if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
                 file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
             fi
