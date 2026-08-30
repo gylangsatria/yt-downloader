@@ -141,13 +141,22 @@ DB_URI=mysql://user:password@db.example.com:3306/history
 First-run setup with a cloud database (e.g. from a machine that already has local history):
 
 ```bash
-# 1. Provision a MySQL/MariaDB server (Railway, Aiven, VPS, etc.)
-#    and create a database, e.g. `history`.
+# 1. Provision a MySQL/MariaDB server.
+#    The bundled optional-feature/cloud-database/docker-compose.mariadb.yml
+#    runs a persistent MariaDB server (deploy it on your cloud host / VPS):
+#      cd optional-feature/cloud-database
+#      cp docker-compose.mariadb.env.example .env   # edit credentials
+#      docker compose -f docker-compose.mariadb.yml up -d
+#    (or use Railway, Aiven, etc. and create a database named e.g. `history`).
 
-# 2. Set DB_MODE=cloud and DB_URI in .env, then push existing local
-#    history.db rows into the cloud DB:
+# 2. On each PC set DB_MODE=cloud and DB_URI in .env, then push existing
+#    local history.db rows into the cloud DB:
 docker compose exec yt-downloader /app/db_history.sh migrate-cloud
 ```
+
+> Full step-by-step deployment guide (server setup, firewall, PC `.env`,
+> migration, backup, security checklist): see
+> [`optional-feature/cloud-database/README.md`](optional-feature/cloud-database/README.md).
 
 ---
 

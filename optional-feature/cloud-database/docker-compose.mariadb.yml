@@ -1,0 +1,49 @@
+# ======================================================
+# MariaDB server for yt-downloader v3.0.0 (cloud history backend)
+#
+# Deploy THIS file on your cloud host / VPS -- NOT on the PCs running
+# the downloader app. It provisions the shared MariaDB server that all
+# local PCs point to via DB_URI.
+#
+# Usage:
+#   cp docker-compose.mariadb.env.example .env        # edit credentials
+#   docker compose -f docker-compose.mariadb.yml up -d
+#   docker compose -f docker-compose.mariadb.yml ps   # wait health = healthy
+#
+# Then on every PC set in the app .env:
+#   DB_MODE=cloud
+#   DB_URI=mysql://$DB_USER:$DB_PASSWORD@<CLOUD_IP>:3306/$DB_DATABASE
+#
+# Security:
+#   * Open TCP 3306 only to your PCs (firewall/security-group), not 0.0.0.0.
+#   * Use strong, unique passwords in .env.
+# ======================================================
+
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: yt-downloader-db
+    restart: unless-stopped
+    environment:
+      # Database created automatically on first start.
+      MARIADB_DATABASE: ${DB_DATABASE:-history}
+      # Dedicated user the yt-downloader app connects as.
+      MARIADB_USER: ${DB_USER:?set DB_USER in .env}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      # Root/admin password (also used for backups/manage, not by the app).
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+    volumes:
+      # Persistent data -- survives container rebuilds/upgrades.
+      - mariadb_data:/var/lib/mysql
+    ports:
+      # Listen on all interfaces; restrict via firewall, or bind a specific IP.
+      - "${DB_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mariadb_data:
