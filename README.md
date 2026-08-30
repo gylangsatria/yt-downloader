@@ -113,6 +113,12 @@ docker compose exec yt-downloader /app/db_history.sh info "https://youtube.com/w
 
 # Manual migration from history.txt
 docker compose exec yt-downloader /app/db_history.sh migrate
+
+# Push local SQLite history into the cloud DB (local → cloud)
+docker compose exec yt-downloader /app/db_history.sh migrate-cloud
+
+# Pull the cloud DB into a local SQLite file (cloud → local)
+docker compose exec yt-downloader /app/db_history.sh migrate-local [history.db]
 ```
 
 > **Note:** The `history.db` database is automatically created and migrated from `history.txt` the first time the container runs. No manual setup required.
@@ -153,6 +159,25 @@ First-run setup with a cloud database (e.g. from a machine that already has loca
 #    local history.db rows into the cloud DB:
 docker compose exec yt-downloader /app/db_history.sh migrate-cloud
 ```
+
+**Reverse migration — cloud back to local SQLite** (e.g. stop using cloud, go back to `DB_MODE=local` on a single PC):
+
+```bash
+# 1. Keep DB_MODE=cloud in .env (migrate-local reads the cloud as the source), then:
+docker compose exec yt-downloader /app/db_history.sh migrate-local
+
+# 2. It pulls every cloud row into the local history.db (keyed by URL, idempotent —
+#    safe to re-run). Without an argument it targets the default local file.
+
+# 3. When done, switch back to local mode:
+#    DB_MODE=local   # in .env
+docker compose restart yt-downloader
+```
+
+> Both `migrate-cloud` and `migrate-local` upsert by unique URL, so they are
+> idempotent and safe to re-run. `migrate-local` targets `data/config/history.db`
+> by default; pass a different path (inside the container) to restore a copy instead.
+
 
 > Full step-by-step deployment guide (server setup, firewall, PC `.env`,
 > migration, backup, security checklist): see

@@ -109,6 +109,21 @@ Expected output:
 
 It is idempotent — duplicate URLs are skipped (`url` is `UNIQUE`).
 
+### Reverse migrate — cloud back to local
+
+To stop using the cloud and go back to `DB_MODE=local` on a PC, pull the cloud
+rows into the local SQLite file (keep `DB_MODE=cloud` in `.env` while running,
+since the cloud is the source):
+
+```bash
+docker compose exec yt-downloader /app/db_history.sh migrate-local
+# optional: target another file instead of the default history.db
+docker compose exec yt-downloader /app/db_history.sh migrate-local /app/.yt-dlp-config/restore.db
+```
+
+Then set `DB_MODE=local` in `.env` and restart the container. `migrate-local`
+upserts by unique `url` too, so it is also idempotent.
+
 ---
 
 ## Verify it worked

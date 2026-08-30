@@ -44,7 +44,7 @@ db_configure_cloud() {
     MYSQL_HOST="${BASH_REMATCH[4]}"
     MYSQL_PORT="${BASH_REMATCH[6]:-3306}"
     MYSQL_DB="${BASH_REMATCH[7]}"
-    MYSQL_ARGS=(-h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER")
+    MYSQL_ARGS=(--default-character-set=utf8mb4 -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER")
     [[ -n "$MYSQL_PASS" ]] && MYSQL_ARGS+=("-p$MYSQL_PASS")
     MYSQL_ARGS+=("$MYSQL_DB")
 }
@@ -295,26 +295,123 @@ db_migrate_to_cloud() {
         echo "[DB] No local SQLite file at $src to migrate." >&2
         return 1
     fi
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+        echo "[DB] ERROR: sqlite3 not found (required to read local DB)." >&2
+        return 1
+    fi
 
-    local n=0 url title format status file_path file_size duration downloaded_at
-    while IFS=$'\t' read -r url title format status file_path file_size duration downloaded_at; do
-        db_exec <<SQL
-$DB_UPSERT downloads (url, title, format, status, file_path, file_size, duration, downloaded_at)
-VALUES (
-    '$(sqlite3_escape "$url")',
-    '$(sqlite3_escape "$title")',
-    '$(sqlite3_escape "$format")',
-    '$(sqlite3_escape "$status")',
-    '$(sqlite3_escape "$file_path")',
-    $(sanitize_num "$file_size"),
-    $(sanitize_num "$duration"),
-    '$(sqlite3_escape "$downloaded_at")'
-);
-SQL
-        ((n++))
-    done < <(sqlite3 -separator $'\t' "$src" "SELECT url, title, format, status, file_path, file_size, duration, downloaded_at FROM downloads" 2>/dev/null)
+    # One-shot migration: generate INSERT statements with sqlite3 quote() (proper
+    # SQL escaping, incl. quotes/newlines/emoji), cap columns to cloud widths, then
+    # stream into a single mysql connection. REPLACE keeps it idempotent by url.
+    # ponytail: SUBSTR caps avoid MySQL 1406 (data too long); upgrade = widen columns.
+    local sqlfile
+    sqlfile=$(mktemp)
+    sqlite3 "$src" "
+SELECT 'REPLACE INTO downloads (url,title,format,status,file_path,file_size,duration,downloaded_at) VALUES ('||
+       quote(SUBSTR(url,1,512))||','||
+       COALESCE(quote(SUBSTR(title,1,512)),'NULL')||','||
+       COALESCE(quote(SUBSTR(format,1,64)),'NULL')||','||
+       COALESCE(quote(SUBSTR(status,1,16)),'NULL')||','||
+       COALESCE(quote(SUBSTR(file_path,1,512)),'NULL')||','||
+       COALESCE(quote(file_size),'0')||','||
+       COALESCE(quote(duration),'0')||','||
+       COALESCE(quote(downloaded_at),'NULL')||');'
+FROM downloads;" > "$sqlfile"
+
+    local n
+    n=$(sqlite3 "$src" "SELECT COUNT(*) FROM downloads;" 2>/dev/null)
+    n="${n:-0}"
+
+    if [[ "$n" -eq 0 ]]; then
+        echo "[DB] No rows to migrate in $src." >&2
+        rm -f "$sqlfile"
+        return 0
+    fi
+
+    mysql "${MYSQL_ARGS[@]}" < "$sqlfile"
+    local rc=$?
+    rm -f "$sqlfile"
+    if [[ "$rc" -ne 0 ]]; then
+        echo "[DB] ERROR: cloud migration failed (mysql exit $rc)." >&2
+        return $rc
+    fi
 
     echo "[DB] Migrated $n rows from $src to cloud ($MYSQL_DB@$MYSQL_HOST)."
+    echo "[DB] Migrated $n rows from $src to cloud ($MYSQL_DB@$MYSQL_HOST)."
+}
+
+# === Migrate existing cloud MySQL -> local SQLite ===
+# Usage: DB_MODE=cloud ... db_history.sh migrate-local [/path/to/dest.history.db]
+db_migrate_to_local() {
+    local dest="${1:-$DB_FILE}"
+
+    if [[ "$DB_MODE" != "cloud" ]]; then
+        echo "[DB] Set DB_MODE=cloud in .env first (cloud is the source)." >&2
+        return 1
+    fi
+    if [[ "$MYSQL_OK" -ne 1 ]]; then
+        echo "[DB] Cloud DB not configured (check DB_URI)." >&2
+        return 1
+    fi
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+        echo "[DB] ERROR: sqlite3 not found (required to write local DB)." >&2
+        return 1
+    fi
+
+    # Ensure local destination table exists.
+    sqlite3 "$dest" <<'SQL'
+CREATE TABLE IF NOT EXISTS downloads (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    url             TEXT NOT NULL UNIQUE,
+    title           TEXT DEFAULT '',
+    format          TEXT DEFAULT '',
+    status          TEXT DEFAULT 'success',
+    file_path       TEXT DEFAULT '',
+    file_size       INTEGER DEFAULT 0,
+    duration        INTEGER DEFAULT 0,
+    downloaded_at   TEXT DEFAULT (datetime('now','localtime'))
+);
+SQL
+
+    # One-shot: dump cloud as tab-separated (IFNULL avoids literal 'NULL'), then
+    # .import into a staging table and INSERT OR REPLACE (keyed by url) into local.
+    # Staging avoids SQL escaping mismatches (MySQL vs SQLite quote handling).
+    # ponytail: raw dump breaks if a field truly contains tab/newline; upgrade =
+    #           robust CSV/escaper if such content ever shows up.
+    local tmp
+    tmp=$(mktemp)
+    mysql "${MYSQL_ARGS[@]}" --batch --raw --skip-column-names -e "
+SELECT IFNULL(url,''),IFNULL(title,''),IFNULL(format,''),IFNULL(status,''),
+       IFNULL(file_path,''),IFNULL(file_size,0),IFNULL(duration,0),IFNULL(downloaded_at,'')
+FROM downloads ORDER BY id;" > "$tmp"
+    local rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        echo "[DB] ERROR: cloud->local migration failed (mysql exit $rc)." >&2
+        rm -f "$tmp"
+        return $rc
+    fi
+
+    sqlite3 "$dest" <<SQL
+DROP TABLE IF EXISTS _migrate_import;
+CREATE TABLE _migrate_import(url TEXT,title TEXT,format TEXT,status TEXT,file_path TEXT,file_size TEXT,duration TEXT,downloaded_at TEXT);
+.mode tabs
+.import "$tmp" _migrate_import
+INSERT OR REPLACE INTO downloads(url,title,format,status,file_path,file_size,duration,downloaded_at)
+  SELECT url,title,format,status,file_path,
+         CASE WHEN trim(file_size)='' THEN 0 ELSE CAST(file_size AS INTEGER) END,
+         CASE WHEN trim(duration)='' THEN 0 ELSE CAST(duration AS INTEGER) END,
+         downloaded_at
+  FROM _migrate_import;
+DROP TABLE _migrate_import;
+SQL
+    rc=$?
+    rm -f "$tmp"
+    if [[ "$rc" -ne 0 ]]; then
+        echo "[DB] ERROR: cloud->local migration failed (sqlite exit $rc)." >&2
+        return $rc
+    fi
+
+    echo "[DB] Migrated cloud ($MYSQL_DB@$MYSQL_HOST) to local $dest."
 }
 
 # === Main: run if executed directly ===
@@ -354,6 +451,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             db_init
             db_migrate_to_cloud "${2:-/app/.yt-dlp-config/history.db}"
             ;;
+        migrate-local)
+            db_migrate_to_local "${2:-}"
+            ;;
         help|*)
             echo "Usage: $0 <command> [args]"
             echo ""
@@ -368,6 +468,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             echo "  title <url>       Get title from history"
             echo "  migrate [file]    Migrate from history.txt"
             echo "  migrate-cloud [sqlite.db]  Push local history to cloud DB"
+            echo "  migrate-local [sqlite.db]  Pull cloud DB into local history"
             echo ""
             echo "Backend is chosen by DB_MODE (.env): local (SQLite) | cloud (MySQL)."
             ;;
