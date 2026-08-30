@@ -61,7 +61,7 @@ reachable on the docker network that the tunnel/app uses. So by default do
 - In `docker-compose.mariadb.yml`, do **not add a `ports:` mapping**. The
   container still listens on `3306` *inside* the `cloudflare-tunnel-vps`
   network, so nothing is exposed to the public internet.
-- Zero Trust route: `db-yt-downloader.gylang.my.id` → **TCP** → `yt-downloader-db:3306`
+- Zero Trust route: `db-yt-downloader.example.tld` → **TCP** → `yt-downloader-db:3306`
   (the in-network port, not a host port).
 - On each PC use tunnel mode: `DB_URI=mysql://<user>:<pass>@127.0.0.1:3307/history`
   plus the `CF_TUNNEL_*` / `CF_ACCESS_*` vars (see main README). The app's
