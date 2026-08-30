@@ -23,3 +23,26 @@ services:
       - DB_URI=${DB_URI:-}
       - HOME=/app
     restart: unless-stopped
+    # Host network: fixes container egress on WSL2 mirrored net (host has working internet),
+    # needed so yt-dlp can reach download sources.
+    network_mode: host
+
+  # Cloudflare access-tcp tunnel as a container (nothing installed on the host).
+  # Started ONLY when .env DB_URI targets 127.0.0.1 (see run.sh). Host network binds
+  # 127.0.0.1:3307 in the WSL guest loopback directly, bypassing docker-proxy
+  # (unreliable in WSL mirrored net). Hostname/token come from .env.
+  cloudflared-mysql-tcp:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-mysql-tcp
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID:-}
+      - CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET:-}
+    command: >
+      access tcp
+      --hostname ${CF_TUNNEL_HOSTNAME:-}
+      --url 127.0.0.1:3307
+      --service-token-id ${CF_ACCESS_CLIENT_ID:-}
+      --service-token-secret ${CF_ACCESS_CLIENT_SECRET:-}
+

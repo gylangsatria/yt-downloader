@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.1.0 (2026-08-30)
+### Added
+- **Three database backends, chosen from `.env`** — Local SQLite, Cloud MySQL via direct VPS IP, or Cloud MySQL via Cloudflare tunnel. Switching only needs the correct `DB_URI`/`DB_MODE`.
+- **Cloudflare tunnel support** — bundled `cloudflared-mysql-tcp` container opens a `cloudflared access tcp` tunnel on `127.0.0.1:3307`, so a cloud DB stays reachable without exposing its 3306 port to the internet. No binary installed on the host.
+- **`CF_TUNNEL_HOSTNAME` / `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`** — `.env` variables for tunnel mode.
+- **F.A.Q.** — troubleshooting section added to `README.md`.
+
+### Changed
+- `docker-compose.yml` — **no hard-coded hostnames/IPs**; all DB connection values come from `.env` via interpolation (`${DB_URI}`, `${CF_TUNNEL_HOSTNAME}`, etc.).
+- `yt-downloader` uses `network_mode: host` so yt-dlp reaches download sources when the Docker bridge has no working egress (e.g. WSL2 mirrored networking).
+- `cloudflared-mysql-tcp` also uses `network_mode: host` so it binds `127.0.0.1:3307` directly, bypassing `docker-proxy` loopback (unreliable in WSL). On native Linux Docker, `host` networking is fully supported and the exact same compose file runs as-is.
+- `run.sh` — auto-starts the tunnel container when `DB_URI` points to `127.0.0.1`, and stops it otherwise. Entry point is `./run.sh` (not bare `docker compose up`).
+- `README.md` / `.env.example` — documented all three modes with per-mode `.env` examples.
+
+### Notes
+- Tunnel mode server-side requires a published Cloudflare route `TCP → <db-container>:3306` (the port *inside* the docker network) plus an Access service token allowed for that hostname.
+
 ## v3.0.0 (2026-08-30)
 ### Added
 - **Shared (Cloud) Database** — history can now be stored on a remote **MySQL/MariaDB** server instead of local SQLite, so multiple PCs running this app share the same download history.

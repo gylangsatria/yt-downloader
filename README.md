@@ -18,7 +18,7 @@
 - **Auto fallback** — Tries various formats if the primary method fails
 - **Duplicate detection** — URLs that have already been downloaded are automatically skipped
 - **Local SQLite History** — Download history stored in a local SQLite database
-- **Shared Cloud Database** — Optional MySQL/MariaDB backend so multiple PCs share one download history (pick via `.env`)
+- **3 Database Backends** — SQLite local, direct VPS MySQL/MariaDB, or Cloudflare-tunnel MySQL so multiple PCs share one history (pick via `.env`, nothing hard-coded in compose)
 - **Platform Organization** — Downloads are automatically sorted into subfolders by platform (YouTube, Twitter, etc.)
 - **Impersonation** — `curl_cffi` support for sites with strict protection
 - **Progress bar** — Displayed directly in the terminal during downloads
@@ -90,11 +90,47 @@ yt-downloader/
 
 ## Download History (Local SQLite / Cloud MySQL)
 
-Since v3.0.0, history is stored by the backend selected in `.env`:
-- `DB_MODE=local` → local **SQLite** database (`data/config/history.db`)
-- `DB_MODE=cloud` → remote **MySQL/MariaDB** server (shared across PCs)
+Since v3.0.0, history is stored by the backend selected in `.env`. There are **three modes**:
 
-Migration from `history.txt` happens automatically on first run (into whichever backend is active).
+| Mode | `DB_MODE` | `DB_URI` | Access |
+|---|---|---|---|
+| **Local** | `local` | ignored | SQLite file `data/config/history.db`, one PC |
+| **Cloud — direct VPS IP** | `cloud` | `mysql://user:pass@<VPS_IP>:<PORT>/history` | straight to the VPS over the internet (needs VPS port open) |
+| **Cloud — Cloudflare tunnel** | `cloud` | `mysql://user:pass@127.0.0.1:3307/history` | through the bundled `cloudflared-mysql-tcp` container |
+
+> In `local` mode `DB_URI` is ignored. In both `cloud` modes, history is shared across every PC that points to the same server.
+> Migration from `history.txt` happens automatically on first run (into whichever backend is active).
+
+### Switch mode — what to change
+
+Edit **only `.env`** and re-run `./run.sh`. No hostnames/credentials are hard-coded in `docker-compose.yml`.
+
+**1 — Local (default):**
+```env
+DB_MODE=local
+```
+
+**2 — Cloud, direct to VPS IP (no tunnel):**
+```env
+DB_MODE=cloud
+DB_URI=mysql://user:secret@103.x.x.x:3307/history
+```
+- Use the port exposed on the VPS host (here `3307`) and open it in the VPS firewall/security group for your PC's IP.
+- No tunnel is used — `run.sh` keeps the tunnel container stopped.
+
+**3 — Cloud, via Cloudflare tunnel:**
+```env
+DB_MODE=cloud
+DB_URI=mysql://user:secret@127.0.0.1:3307/history
+CF_TUNNEL_HOSTNAME=db-yt-downloader.example.tld
+CF_ACCESS_CLIENT_ID=<Access Client ID>
+CF_ACCESS_CLIENT_SECRET=<Access Client Secret>
+```
+- `run.sh` sees `DB_URI` → `127.0.0.1` and **automatically starts** the `cloudflared-mysql-tcp` container, which opens a `cloudflared access tcp` tunnel on `127.0.0.1:3307`.
+- Server-side: published route `db-yt-downloader.example.tld` → **TCP** → `yt-downloader-db:3306` (the port *inside* the docker network), plus an **Access service token** allowed for that hostname.
+- The Cloudflare token is shown only once during creation — keep it safe in `.env` (git-ignored).
+
+> Changing only `DB_URI` / `DB_MODE` is enough; the tunnel container lifecycle is managed automatically by `run.sh`.
 
 ### Available commands:
 
@@ -123,26 +159,10 @@ docker compose exec yt-downloader /app/db_history.sh migrate-local [history.db]
 
 > **Note:** The `history.db` database is automatically created and migrated from `history.txt` the first time the container runs. No manual setup required.
 
-### Local vs Shared (Cloud) database
+### Behavior
 
-Storage backend is selected via `.env`:
-
-| Variable | Value | Effect |
-|---|---|---|
-| `DB_MODE` | `local` (default) | SQLite file `data/config/history.db`, one PC only |
-| `DB_MODE` | `cloud` | Shared MySQL/MariaDB server, history synced across all PCs |
-| `DB_URI` | `mysql://user:pass@host:3306/history` | Cloud connection string (ignored in `local` mode) |
-
-**Specify a `cloud` server so both PC 1 and PC 2 read/write the same history:**
-
-```env
-# .env
-DB_MODE=cloud
-DB_URI=mysql://user:password@db.example.com:3306/history
-```
-
-- Duplicate detection then works **globally**: download a video on PC 1, and PC 2 will skip it (`[SKIP] Already downloaded`).
-- Only **history** is shared. Downloaded video files still live on the PC that downloaded them (`downloads/` is not synced).
+- Duplicate detection is **global** in `cloud` mode: download on PC 1 → PC 2 skips it (`[SKIP] Already downloaded`).
+- Only **history** is shared. Video files stay on the PC that downloaded them (`downloads/` is not synced).
 
 First-run setup with a cloud database (e.g. from a machine that already has local history):
 
@@ -193,6 +213,19 @@ Edit `data/config/settings.conf`:
 DEFAULT_FORMAT="bv*+ba/best"     # Best video format
 AUDIO_FORMAT="ba/bestaudio"      # Best audio format
 ```
+
+### Database backend (`.env`)
+
+The database is chosen entirely from `data/../.env` at the project root — see
+[Download History](#download-history-local-sqlite--cloud-mysql) for the 3 modes,
+the exact variables, and what to change on each PC. Key variables:
+
+| Variable | Purpose |
+|---|---|
+| `DB_MODE` | `local` (SQLite) \| `cloud` (MySQL/MariaDB) |
+| `DB_URI` | MySQL connection string; `127.0.0.1` = tunnel mode |
+| `CF_TUNNEL_HOSTNAME` | Cloudflare tunnel hostname (tunnel mode only) |
+| `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access service token (tunnel mode only) |
 
 ---
 
@@ -249,12 +282,41 @@ print('Cookies saved to data/config/cookies.txt')
 
 ---
 
+## F.A.Q.
+
+**Q: How do I switch the database mode?**
+Edit only `.env`, then run `./run.sh`. See [Download History](#download-history-local-sqlite--cloud-mysql) for the three modes and their `.env` examples. Use `./run.sh` (not bare `docker compose up`) — it manages the tunnel container for you.
+
+**Q: How do I connect to a Cloud DB without opening it to the public internet?**
+Use tunnel mode — `DB_URI=mysql://user:pass@127.0.0.1:3307/...` plus the `CF_*` variables. `run.sh` auto-starts `cloudflared-mysql-tcp`, which dials the tunneled hostname and exposes a local `127.0.0.1:3307`. The DB port never needs to be exposed.
+
+**Q: I get `502` / `websocket: bad handshake` when using tunnel mode.**
+That's a Cloudflare side / origin issue, not the app: the edge cannot reach your DB. Check on the VPS: (1) the tunnel container is running and healthy, (2) the MariaDB container is on the same docker network as the tunnel, (3) the published route is `TCP → <db-container>:3306` (the port *inside* the network, not the host-published one).
+
+**Q: My Cloudflare Access token is only shown once. What if I lose it?**
+Create a new service token in Zero Trust (Access → Service Auth → Service Tokens), add it to the Access application policy for the hostname, and update `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` in `.env`. Then `./run.sh`.
+
+**Q: Downloads fail with "SSL: handshake timed out" / no internet from the container.**
+Usually the Docker bridge has no working egress (common on WSL2 mirrored networking) while the host itself works. The images run with `network_mode: host`, so they share the host's network — verify the host can reach the site (`curl -I https://www.youtube.com`). If you're on native Linux Docker, host networking also works unchanged.
+
+**Q: The queue isn't processing.**
+`data/config/queue.txt` is watched by `inotifywait` inside the running container. Make sure the container is up (`docker ps`), add one URL per line, and the file is closed/saved (`>>` or save). Check logs in `data/logs/`.
+
+**Q: A URL is skipped even though I want to re-download it.**
+Duplicate protection by URL is intentional — it works globally in cloud mode (downloaded on PC 1 → skipped on PC 2). It only guards history; see `docker compose exec yt-downloader /app/db_history.sh` to inspect/manage entries.
+
+**Q: No `cloudflared` / something installed on my host?**
+Nothing. Everything (the app and the tunnel) is a Docker container. The only host requirement is the Docker Engine itself.
+
+---
+
 ## Notes
 
 - Container runs in the background (`restart: unless-stopped`)
 - Downloaded files are automatically git-ignored
 - Download history is stored in SQLite locally, or in a shared MySQL/MariaDB server (see [Download History](#download-history-local-sqlite--cloud-mysql)) — set via `DB_MODE` in `.env`
 - URLs that have already been downloaded are automatically skipped (duplicate check)
+
 
 ---
 

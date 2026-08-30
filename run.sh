@@ -31,6 +31,22 @@ fi
 
 # Start the container with UID/GID passed as environment variables
 echo "[START] Starting container..."
+
+# --- DB tunnel handling (driven by .env DB_URI, no hostnames here) ---
+NEEDS_TUNNEL=0
+if [[ -f .env ]]; then
+    DB_URI="$(sed -n 's/^DB_URI=//p' .env | tail -1)"
+    case "$DB_URI" in
+        *127.0.0.1*|*localhost*) NEEDS_TUNNEL=1;;
+    esac
+fi
+if [[ "$NEEDS_TUNNEL" -eq 1 ]]; then
+    echo "[TUNNEL] DB_URI uses 127.0.0.1 -> starting cloudflared tunnel..."
+    env UID="$MY_UID" GID="$MY_GID" USER="$MY_USER" docker compose up -d cloudflared-mysql-tcp
+else
+    docker compose rm -sf cloudflared-mysql-tcp >/dev/null 2>&1 || true
+fi
+
 env UID="$MY_UID" GID="$MY_GID" USER="$MY_USER" docker compose up -d
 echo ""
 echo "[DONE] Container is running!"
