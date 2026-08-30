@@ -8,6 +8,7 @@ data/logs/
 
 # Config runtime files (URL queue, history, cookies)
 data/config/queue.txt
+data/config/queue.txt.snapshot.*
 data/config/history.txt
 data/config/history.db
 data/config/.migrated
