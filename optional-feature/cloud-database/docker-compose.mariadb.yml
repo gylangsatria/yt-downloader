@@ -10,12 +10,19 @@
 #   docker compose -f docker-compose.mariadb.yml up -d
 #   docker compose -f docker-compose.mariadb.yml ps   # wait health = healthy
 #
-# Then on every PC set in the app .env:
+# Then on every PC set in the app .env (tunnel = recommended, no open port):
 #   DB_MODE=cloud
-#   DB_URI=mysql://$DB_USER:$DB_PASSWORD@<CLOUD_IP>:3306/$DB_DATABASE
+#   DB_URI=mysql://$DB_USER:$DB_PASSWORD@127.0.0.1:3307/$DB_DATABASE
+#   # + CF_TUNNEL_HOSTNAME / CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET
+#
+# For direct-VPS-IP access (Option B) instead use in the app .env:
+#   DB_URI=mysql://$DB_USER:$DB_PASSWORD@<CLOUD_IP>:<PORT>/$DB_DATABASE
+#   # and add a 'ports:' mapping below + open the port ONLY to your PC IPs.
 #
 # Security:
-#   * Open TCP 3306 only to your PCs (firewall/security-group), not 0.0.0.0.
+#   * Default (Option A, tunnel): NO 'ports:' mapping -> not exposed to the
+#     internet at all, no firewall access required. Verify: nmap shows filtered.
+#   * Option B (direct): open the port only to your PC IPs, never 0.0.0.0/0.
 #   * Use strong, unique passwords in .env.
 # ======================================================
 
@@ -35,9 +42,11 @@ services:
     volumes:
       # Persistent data -- survives container rebuilds/upgrades.
       - mariadb_data:/var/lib/mysql
-    ports:
-      # Listen on all interfaces; restrict via firewall, or bind a specific IP.
-      - "${DB_PORT:-3306}:3306"
+    # Default: NO host port -> MariaDB is only reachable inside docker networks
+    # (e.g. the Cloudflare tunnel). Do NOT uncomment for tunnel mode.
+    # Only for direct-VPS-IP mode (Option B) + firewall restricted to your PCs:
+    # ports:
+    #   - "${DB_PORT:-3306}:3306"
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s

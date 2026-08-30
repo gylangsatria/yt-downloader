@@ -128,6 +128,7 @@ CF_ACCESS_CLIENT_SECRET=<Access Client Secret>
 ```
 - `run.sh` sees `DB_URI` → `127.0.0.1` and **automatically starts** the `cloudflared-mysql-tcp` container, which opens a `cloudflared access tcp` tunnel on `127.0.0.1:3307`.
 - Server-side: published route `db-yt-downloader.example.tld` → **TCP** → `yt-downloader-db:3306` (the port *inside* the docker network), plus an **Access service token** allowed for that hostname.
+- Keep MariaDB off the public internet — **no host `ports:` mapping** (`nmap` → `filtered`, never `open`). If you can't edit the firewall, omitting `ports:` and re-creating the container closes exposure entirely.
 - The Cloudflare token is shown only once during creation — keep it safe in `.env` (git-ignored).
 
 > Changing only `DB_URI` / `DB_MODE` is enough; the tunnel container lifecycle is managed automatically by `run.sh`.

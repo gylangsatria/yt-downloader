@@ -51,12 +51,38 @@ On first start the MariaDB image creates:
 
 ---
 
-## Step 2 — Open MySQL port only to your PCs
+## Step 2 — Keep MySQL off the public internet
 
-Expose TCP **3306** but restrict source IPs in your firewall / cloud
-security group to the public IPs of PC 1 and PC 2 — **not** `0.0.0.0/0`.
+The MariaDB container **does not need a host port**. It only has to be
+reachable on the docker network that the tunnel/app uses. So by default do
+**not** publish `3306` / `3307`.
 
-Examples:
+**Option A — Cloudflare tunnel (recommended: no open port, no firewall access needed)**
+- In `docker-compose.mariadb.yml`, do **not add a `ports:` mapping**. The
+  container still listens on `3306` *inside* the `cloudflare-tunnel-vps`
+  network, so nothing is exposed to the public internet.
+- Zero Trust route: `db-yt-downloader.gylang.my.id` → **TCP** → `yt-downloader-db:3306`
+  (the in-network port, not a host port).
+- On each PC use tunnel mode: `DB_URI=mysql://<user>:<pass>@127.0.0.1:3307/history`
+  plus the `CF_TUNNEL_*` / `CF_ACCESS_*` vars (see main README). The app's
+  `cloudflared-mysql-tcp` container relays through the tunnel.
+- Verify externally: `nmap -sS -p 3306,3307 <CLOUD_IP>` → `filtered`/`closed`, never `open`.
+
+> **No firewall access?** Omit the `ports:` mapping and recreate — no host port
+> means nothing is reachable from the internet, regardless of firewall rules.
+> This is the fix when you can't touch the security group:
+> ```bash
+> docker compose -f docker-compose.mariadb.yml down
+> # remove 'ports:' from docker-compose.mariadb.yml
+> docker compose -f docker-compose.mariadb.yml up -d
+> ```
+
+**Option B — Direct VPS IP (only if you can't use a tunnel AND can edit the firewall)**
+```yaml
+ports:
+  - "${DB_PORT:-3306}:3306"
+```
+Restrict the source to your PC IPs — **not** `0.0.0.0/0`:
 
 ```bash
 # firewall-cmd (RedHat family)
@@ -83,6 +109,9 @@ DB_URI=mysql://gylang:<your-password>@<CLOUD_IP>:3306/history
 - `gylang` = `DB_USER` from Step 1
 - `<your-password>` = `DB_PASSWORD`
 - `<CLOUD_IP>` = public IP of the cloud server
+- `<PORT>` = the port actually exposed on the host if you picked **Option B**
+  (e.g. `3307`, matching `${DB_PORT}`), or `127.0.0.1:3307` if you use **Option A** (tunnel,
+  see the main README)
 - `history` = `DB_DATABASE`
 
 Then rebuild & run:
@@ -157,8 +186,10 @@ docker compose -f docker-compose.mariadb.yml exec -T mariadb \
 
 ## Security checklist
 
-- [ ] Port 3306 exposed **only** to PC 1 & PC 2 IPs.
+- [ ] **No public MySQL port** — MariaDB has no `ports:` mapping (Option A, tunnel) OR it is open only to your PC IPs (Option B, direct).
+- [ ] Verify from outside: `nmap -sS -p 3306,3307 <CLOUD_IP>` shows `filtered`/`closed`.
 - [ ] `DB_PASSWORD` and `DB_ROOT_PASSWORD` are strong and unique.
+- [ ] App database user has **only** needed grants on its own DB (not `ALL ON *.*`).
 - [ ] `.env` on the cloud server is git-ignored / outside the repo.
 - [ ] Backups scheduled (database matters — not just downloads).
 - [ ] Keep the app's `DB_URI` in `.env`, never in code (`*.env` is git-ignored).
