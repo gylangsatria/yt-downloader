@@ -1,7 +1,7 @@
 #!/bin/bash
 # ======================================================
-# YouTube/Twitter Downloader v2.1.0
-# Fully Automatic Mode - SQLite History
+# YouTube/Twitter Downloader v3.0.0
+# Fully Automatic Mode - Local/Cloud History
 # ======================================================
 # Author  : gylangsatria
 # GitHub  : https://github.com/gylangsatria

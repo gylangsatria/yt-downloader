@@ -1,4 +1,4 @@
-# YT-Downloader v2.1.1
+# YT-Downloader v3.0.0
 
 > **Automatic Video Downloader** — Just run it, URLs get downloaded automatically to your host folder.
 
@@ -17,7 +17,8 @@
 - **Twitter/X support** — Download videos from Twitter/X at the best quality
 - **Auto fallback** — Tries various formats if the primary method fails
 - **Duplicate detection** — URLs that have already been downloaded are automatically skipped
-- **SQLite History** — Download history stored neatly in a SQLite database
+- **Local SQLite History** — Download history stored in a local SQLite database
+- **Shared Cloud Database** — Optional MySQL/MariaDB backend so multiple PCs share one download history (pick via `.env`)
 - **Platform Organization** — Downloads are automatically sorted into subfolders by platform (YouTube, Twitter, etc.)
 - **Impersonation** — `curl_cffi` support for sites with strict protection
 - **Progress bar** — Displayed directly in the terminal during downloads
@@ -67,8 +68,9 @@ yt-downloader/
 ├── docker-compose.yml      # Auto UID/GID
 ├── entrypoint.sh           # Runtime user creation
 ├── downloader.sh           # Main downloader (watch/argument mode)
-├── db_history.sh           # SQLite download history module
+├── db_history.sh           # Download history module (SQLite local / MySQL cloud)
 ├── run.sh                  # One-command launcher
+├── .env.example            # DB mode / cloud URI / user template (copy to .env)
 ├── downloads/
 │   ├── Videos/             # Video downloads (organized by platform subfolder)
 │   └── Music/              # Audio downloads (organized by platform subfolder)
@@ -86,10 +88,13 @@ yt-downloader/
 
 ---
 
-## SQLite Download History
+## Download History (Local SQLite / Cloud MySQL)
 
-Since v2.1.0, download history is stored in a **SQLite database** (`data/config/history.db`).
-Migration from `history.txt` happens automatically on first run.
+Since v3.0.0, history is stored by the backend selected in `.env`:
+- `DB_MODE=local` → local **SQLite** database (`data/config/history.db`)
+- `DB_MODE=cloud` → remote **MySQL/MariaDB** server (shared across PCs)
+
+Migration from `history.txt` happens automatically on first run (into whichever backend is active).
 
 ### Available commands:
 
@@ -111,6 +116,38 @@ docker compose exec yt-downloader /app/db_history.sh migrate
 ```
 
 > **Note:** The `history.db` database is automatically created and migrated from `history.txt` the first time the container runs. No manual setup required.
+
+### Local vs Shared (Cloud) database
+
+Storage backend is selected via `.env`:
+
+| Variable | Value | Effect |
+|---|---|---|
+| `DB_MODE` | `local` (default) | SQLite file `data/config/history.db`, one PC only |
+| `DB_MODE` | `cloud` | Shared MySQL/MariaDB server, history synced across all PCs |
+| `DB_URI` | `mysql://user:pass@host:3306/history` | Cloud connection string (ignored in `local` mode) |
+
+**Specify a `cloud` server so both PC 1 and PC 2 read/write the same history:**
+
+```env
+# .env
+DB_MODE=cloud
+DB_URI=mysql://user:password@db.example.com:3306/history
+```
+
+- Duplicate detection then works **globally**: download a video on PC 1, and PC 2 will skip it (`[SKIP] Already downloaded`).
+- Only **history** is shared. Downloaded video files still live on the PC that downloaded them (`downloads/` is not synced).
+
+First-run setup with a cloud database (e.g. from a machine that already has local history):
+
+```bash
+# 1. Provision a MySQL/MariaDB server (Railway, Aiven, VPS, etc.)
+#    and create a database, e.g. `history`.
+
+# 2. Set DB_MODE=cloud and DB_URI in .env, then push existing local
+#    history.db rows into the cloud DB:
+docker compose exec yt-downloader /app/db_history.sh migrate-cloud
+```
 
 ---
 
@@ -182,7 +219,7 @@ print('Cookies saved to data/config/cookies.txt')
 
 - Container runs in the background (`restart: unless-stopped`)
 - Downloaded files are automatically git-ignored
-- Download history is stored in SQLite (`data/config/history.db`) — automatic migration from `history.txt`
+- Download history is stored in SQLite locally, or in a shared MySQL/MariaDB server (see [Download History](#download-history-local-sqlite--cloud-mysql)) — set via `DB_MODE` in `.env`
 - URLs that have already been downloaded are automatically skipped (duplicate check)
 
 ---
@@ -202,3 +239,4 @@ Powered by:
 - [ffmpeg](https://ffmpeg.org/)
 - [Alpine Linux](https://alpinelinux.org/)
 - [SQLite](https://www.sqlite.org/)
+- [MariaDB](https://mariadb.org/)

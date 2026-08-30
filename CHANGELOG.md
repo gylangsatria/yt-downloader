@@ -1,5 +1,23 @@
 # Changelog
 
+## v3.0.0 (2026-08-30)
+### Added
+- **Shared (Cloud) Database** — history can now be stored on a remote **MySQL/MariaDB** server instead of local SQLite, so multiple PCs running this app share the same download history.
+- **Backend selection via `.env`** — `DB_MODE=local` (SQLite, default) or `DB_MODE=cloud` (MySQL/MariaDB). All credentials and the cloud link live in `.env` (`DB_URI`), never in code.
+- **`db_history.sh migrate-cloud`** — one command to push existing local `history.db` rows into the cloud database.
+- **`.env.example`** — template documenting `DB_MODE`, `DB_FILE`, `DB_URI`, and runtime user settings.
+
+### Changed
+- `db_history.sh` now routes every query through `db_exec`, which dispatches to SQLite (`sqlite3`) or MySQL (`mysql`) based on `DB_MODE`.
+- `db_history.sh` schema is created per backend (SQLite vs MySQL `CREATE TABLE`).
+- `Dockerfile` — added `mariadb-client` package.
+- `docker-compose.yml` — passes `DB_MODE` and `DB_URI` through from `.env`.
+- All version references bumped to v3.0.0.
+
+### Notes
+- Only **history** is shared. Downloaded media files still land on the PC that downloaded them (`downloads/` is not synced).
+- Duplicate detection becomes global in cloud mode: a video downloaded on PC 1 is skipped on PC 2.
+
 ## v2.1.1 (2026-07-19)
 ### Fixed
 - **Race condition on queue file** — `process_queue_safe()` now takes a snapshot before processing, preventing URLs added mid-download from being lost. Preserves new entries added during processing.

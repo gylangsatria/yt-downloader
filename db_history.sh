@@ -1,36 +1,110 @@
 #!/bin/bash
 # ======================================================
-# SQLite Download History Module
+# Download History Module - SQLite (local) / MySQL (cloud)
 # ======================================================
 # Author  : gylangsatria
 # GitHub  : https://github.com/gylangsatria
 # ======================================================
 #
-# Provides functions to track download history in SQLite,
-# replacing the plain-text history.txt approach.
+# Tracks download history. Supports two backends:
+#   DB_MODE=local  -> SQLite file (default, single PC)
+#   DB_MODE=cloud  -> shared MySQL/MariaDB server, so history syncs
+#                      between all PCs pointed at the same DB_URI.
 #
-# Database schema:
-#   downloads (
-#     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-#     url         TEXT NOT NULL UNIQUE,
-#     title       TEXT,
-#     format      TEXT,
-#     status      TEXT DEFAULT 'success',
-#     file_path   TEXT,
-#     file_size   INTEGER,
-#     duration    INTEGER,
-#     downloaded_at TEXT DEFAULT (datetime('now','localtime'))
-#   )
+# Schema (downloads table) exists in both backends.
 #
-# Environment variables:
-#   DB_FILE  - Path to SQLite database (default: /app/.yt-dlp-config/history.db)
+# Environment variables (from .env via docker-compose):
+#   DB_MODE - "local" (default) | "cloud"
+#   DB_FILE - path to SQLite file (local mode) default /app/.yt-dlp-config/history.db
+#   DB_URI  - mysql://user:password@host:port/database (required when DB_MODE=cloud)
 # ======================================================
 
+DB_MODE="${DB_MODE:-local}"
 DB_FILE="${DB_FILE:-/app/.yt-dlp-config/history.db}"
+DB_URI="${DB_URI:-}"
+
+# --- MySQL connection parsing (cloud mode only) ---
+MYSQL_HOST=""
+MYSQL_PORT="3306"
+MYSQL_USER=""
+MYSQL_PASS=""
+MYSQL_DB=""
+MYSQL_ARGS=()
+MYSQL_OK=0
+
+db_configure_cloud() {
+    local re='^[a-zA-Z0-9+]+://([^:@/]+)(:([^@/]*))?@([^:/]+)(:([0-9]+))?/([^/?]+).*'
+    if [[ ! "$DB_URI" =~ $re ]]; then
+        echo "[DB] ERROR: invalid DB_URI" >&2
+        echo "     Expected: mysql://user:password@host:port/database" >&2
+        return 1
+    fi
+    MYSQL_USER="${BASH_REMATCH[1]}"
+    MYSQL_PASS="${BASH_REMATCH[3]}"
+    MYSQL_HOST="${BASH_REMATCH[4]}"
+    MYSQL_PORT="${BASH_REMATCH[6]:-3306}"
+    MYSQL_DB="${BASH_REMATCH[7]}"
+    MYSQL_ARGS=(-h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER")
+    [[ -n "$MYSQL_PASS" ]] && MYSQL_ARGS+=("-p$MYSQL_PASS")
+    MYSQL_ARGS+=("$MYSQL_DB")
+}
+
+# Backend-specific SQL fragments
+DB_NOW="datetime('now','localtime')"
+DB_UPSERT="INSERT OR REPLACE INTO"
+DB_INSERT_IGNORE="INSERT OR IGNORE INTO"
+DB_STATS_TODAY="date(downloaded_at) = date('now','localtime')"
+
+if [[ "$DB_MODE" == "cloud" ]]; then
+    db_configure_cloud && MYSQL_OK=1
+    DB_NOW="NOW()"
+    DB_UPSERT="REPLACE INTO"
+    DB_INSERT_IGNORE="INSERT IGNORE INTO"
+    DB_STATS_TODAY="DATE(downloaded_at) = CURDATE()"
+fi
+
+# === Execute SQL against the active backend (SQL fed via stdin) ===
+# Local : rows '|'-separated. Cloud : rows tab-separated (see *_pipe helpers).
+db_exec() {
+    if [[ "$DB_MODE" == "cloud" ]]; then
+        if [[ "$MYSQL_OK" -ne 1 ]]; then
+            echo "[DB] ERROR: cloud DB not configured (check DB_URI in .env)" >&2
+            return 1
+        fi
+        mysql "${MYSQL_ARGS[@]}" --batch --skip-column-names -e "$(cat)"
+    else
+        printf '%s\n' "$(cat)" | sqlite3 "$DB_FILE"
+    fi
+}
 
 # === Initialize database ===
 db_init() {
-    sqlite3 "$DB_FILE" <<'SQL'
+    if [[ "$DB_MODE" == "cloud" ]]; then
+        if [[ "$MYSQL_OK" -ne 1 ]]; then
+            echo "[DB] ERROR: cannot init cloud DB (check DB_URI in .env)" >&2
+            return 1
+        fi
+        mysql "${MYSQL_ARGS[@]}" <<'SQL'
+CREATE TABLE IF NOT EXISTS downloads (
+    id            INT NOT NULL AUTO_INCREMENT,
+    url           VARCHAR(512) NOT NULL,
+    title         VARCHAR(512),
+    format        VARCHAR(64),
+    status        VARCHAR(16)  NOT NULL DEFAULT 'success',
+    file_path     VARCHAR(512),
+    file_size     BIGINT       NOT NULL DEFAULT 0,
+    duration      INT          NOT NULL DEFAULT 0,
+    downloaded_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_downloads_url (url)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+SQL
+        # Best-effort indexes (skip if they already exist)
+        for col in status downloaded_at; do
+            mysql "${MYSQL_ARGS[@]}" -e "CREATE INDEX idx_downloads_${col} ON downloads(${col});" 2>/dev/null || true
+        done
+    else
+        sqlite3 "$DB_FILE" <<'SQL'
 CREATE TABLE IF NOT EXISTS downloads (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     url             TEXT NOT NULL UNIQUE,
@@ -46,6 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_downloads_url ON downloads(url);
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_at);
 SQL
+    fi
 }
 
 # === Check if URL already exists in database ===
@@ -53,14 +128,13 @@ SQL
 db_url_exists() {
     local url="$1"
     local count
-    count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM downloads WHERE url = '$(sqlite3_escape "$url")'")
+    count=$(db_exec <<< "SELECT COUNT(*) FROM downloads WHERE url = '$(sqlite3_escape "$url")'")
     [[ "$count" -gt 0 ]]
 }
 
 # === Sanitize numeric value (force to integer, default 0) ===
 sanitize_num() {
     local val="$1"
-    # Remove non-numeric characters except leading minus
     val="${val//[^0-9]/}"
     echo "${val:-0}"
 }
@@ -76,8 +150,8 @@ db_record_success() {
     local duration
     duration=$(sanitize_num "$6")
 
-    sqlite3 "$DB_FILE" <<SQL
-INSERT OR REPLACE INTO downloads (url, title, format, status, file_path, file_size, duration, downloaded_at)
+    db_exec <<SQL
+$DB_UPSERT downloads (url, title, format, status, file_path, file_size, duration, downloaded_at)
 VALUES (
     '$(sqlite3_escape "$url")',
     '$(sqlite3_escape "$title")',
@@ -86,7 +160,7 @@ VALUES (
     '$(sqlite3_escape "$file_path")',
     $file_size,
     $duration,
-    datetime('now','localtime')
+    $DB_NOW
 );
 SQL
 }
@@ -97,14 +171,14 @@ db_record_failure() {
     local title="$2"
     local format="$3"
 
-    sqlite3 "$DB_FILE" <<SQL
-INSERT OR REPLACE INTO downloads (url, title, format, status, downloaded_at)
+    db_exec <<SQL
+$DB_UPSERT downloads (url, title, format, status, downloaded_at)
 VALUES (
     '$(sqlite3_escape "$url")',
     '$(sqlite3_escape "$title")',
     '$(sqlite3_escape "$format")',
     'failed',
-    datetime('now','localtime')
+    $DB_NOW
 );
 SQL
 }
@@ -113,44 +187,64 @@ SQL
 # Prints: title|format|status|file_path|downloaded_at
 db_get_info() {
     local url="$1"
-    sqlite3 "$DB_FILE" "SELECT title, format, status, file_path, downloaded_at FROM downloads WHERE url = '$(sqlite3_escape "$url")'" -separator '|'
+    db_exec <<SQL | tr '\t' '|'
+SELECT title, format, status, file_path, downloaded_at FROM downloads WHERE url = '$(sqlite3_escape "$url")';
+SQL
 }
 
 # === List recent downloads ===
 db_list_recent() {
     local limit="${1:-20}"
-    sqlite3 "$DB_FILE" "SELECT id, url, title, status, downloaded_at FROM downloads ORDER BY downloaded_at DESC LIMIT $limit" -separator ' | ' -header
+    if [[ "$DB_MODE" == "cloud" ]]; then
+        echo "id | url | title | status | downloaded_at"
+        db_exec <<SQL | sed 's/\t/ | /g'
+SELECT id, url, title, status, downloaded_at FROM downloads ORDER BY downloaded_at DESC LIMIT $limit;
+SQL
+    else
+        sqlite3 "$DB_FILE" "SELECT id, url, title, status, downloaded_at FROM downloads ORDER BY downloaded_at DESC LIMIT $limit" -separator ' | ' -header
+    fi
 }
 
 # === Show download statistics ===
 db_stats() {
-    sqlite3 "$DB_FILE" <<'SQL'
-SELECT 'total'     AS metric, COUNT(*)               AS value FROM downloads
-UNION ALL
-SELECT 'success'   AS metric, COUNT(*)               AS value FROM downloads WHERE status = 'success'
-UNION ALL
-SELECT 'failed'    AS metric, COUNT(*)               AS value FROM downloads WHERE status = 'failed'
-UNION ALL
-SELECT 'unique'    AS metric, COUNT(DISTINCT url)    AS value FROM downloads
-UNION ALL
-SELECT 'today'     AS metric, COUNT(*)               AS value FROM downloads WHERE date(downloaded_at) = date('now','localtime');
+    if [[ "$DB_MODE" == "cloud" ]]; then
+        echo "metric|value"
+        db_exec <<SQL | tr '\t' '|'
+SELECT 'total',   COUNT(*) FROM downloads
+UNION ALL SELECT 'success', COUNT(*) FROM downloads WHERE status = 'success'
+UNION ALL SELECT 'failed',  COUNT(*) FROM downloads WHERE status = 'failed'
+UNION ALL SELECT 'unique',  COUNT(DISTINCT url) FROM downloads
+UNION ALL SELECT 'today',   COUNT(*) FROM downloads WHERE $DB_STATS_TODAY;
 SQL
+    else
+        db_exec <<'SQL'
+SELECT 'total'   AS metric, COUNT(*)               AS value FROM downloads
+UNION ALL
+SELECT 'success' AS metric, COUNT(*)               AS value FROM downloads WHERE status = 'success'
+UNION ALL
+SELECT 'failed'  AS metric, COUNT(*)               AS value FROM downloads WHERE status = 'failed'
+UNION ALL
+SELECT 'unique'  AS metric, COUNT(DISTINCT url)    AS value FROM downloads
+UNION ALL
+SELECT 'today'   AS metric, COUNT(*)               AS value FROM downloads WHERE date(downloaded_at) = date('now','localtime');
+SQL
+    fi
 }
 
 # === Get the title from history if previously downloaded ===
 db_get_title() {
     local url="$1"
-    sqlite3 "$DB_FILE" "SELECT title FROM downloads WHERE url = '$(sqlite3_escape "$url")' AND title != '' ORDER BY downloaded_at DESC LIMIT 1"
+    db_exec <<< "SELECT title FROM downloads WHERE url = '$(sqlite3_escape "$url")' AND title != '' ORDER BY downloaded_at DESC LIMIT 1"
 }
 
-# === Escape single quotes for SQLite ===
+# === Escape single quotes (works for both SQLite and MySQL) ===
 sqlite3_escape() {
     local str="$1"
     str="${str//\'/\'\'}"
     echo "$str"
 }
 
-# === Migrate from old history.txt to SQLite ===
+# === Migrate from old history.txt into the active backend ===
 db_migrate_from_txt() {
     local history_file="${1:-/app/.yt-dlp-config/history.txt}"
 
@@ -167,20 +261,60 @@ db_migrate_from_txt() {
         [[ "$line" == \#* ]] && continue
 
         # Format: 2026-07-07 03:17:56 | https://x.com/... | best | title here
-        # Split on " | " — datetime is first field, url starts with http, then format, rest is title
-        # Use a more robust approach: match pattern "YYYY-MM-DD HH:MM:SS | <url> | <format> | <rest>"
         if [[ "$line" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2})\ \|\ (https?://[^ ]+)\ \|\ ([^|]+)\ \|\ (.*)$ ]]; then
             date_time="${BASH_REMATCH[1]}"
             url="${BASH_REMATCH[2]}"
             format="$(echo "${BASH_REMATCH[3]}" | xargs)"
             title="$(echo "${BASH_REMATCH[4]}" | xargs)"
 
-            sqlite3 "$DB_FILE" "INSERT OR IGNORE INTO downloads (url, title, format, status, downloaded_at) VALUES ('$(sqlite3_escape "$url")', '$(sqlite3_escape "$title")', '$(sqlite3_escape "$format")', 'success', '$(sqlite3_escape "$date_time")');" 2>/dev/null
+            db_exec <<SQL 2>/dev/null
+$DB_INSERT_IGNORE downloads (url, title, format, status, downloaded_at)
+VALUES ('$(sqlite3_escape "$url")', '$(sqlite3_escape "$title")', '$(sqlite3_escape "$format")', 'success', '$(sqlite3_escape "$date_time")');
+SQL
             ((migrated++))
         fi
     done < "$history_file"
 
-    echo "[DB] Migrated $migrated entries from history.txt to SQLite database"
+    echo "[DB] Migrated $migrated entries from history.txt to database"
+}
+
+# === Migrate existing local SQLite history -> cloud MySQL ===
+# Usage: DB_MODE=cloud ... db_history.sh migrate-cloud [/path/to/local/history.db]
+db_migrate_to_cloud() {
+    local src="${1:-/app/.yt-dlp-config/history.db}"
+
+    if [[ "$DB_MODE" != "cloud" ]]; then
+        echo "[DB] Set DB_MODE=cloud in .env first." >&2
+        return 1
+    fi
+    if [[ "$MYSQL_OK" -ne 1 ]]; then
+        echo "[DB] Cloud DB not configured (check DB_URI)." >&2
+        return 1
+    fi
+    if [[ ! -f "$src" ]]; then
+        echo "[DB] No local SQLite file at $src to migrate." >&2
+        return 1
+    fi
+
+    local n=0 url title format status file_path file_size duration downloaded_at
+    while IFS=$'\t' read -r url title format status file_path file_size duration downloaded_at; do
+        db_exec <<SQL
+$DB_UPSERT downloads (url, title, format, status, file_path, file_size, duration, downloaded_at)
+VALUES (
+    '$(sqlite3_escape "$url")',
+    '$(sqlite3_escape "$title")',
+    '$(sqlite3_escape "$format")',
+    '$(sqlite3_escape "$status")',
+    '$(sqlite3_escape "$file_path")',
+    $(sanitize_num "$file_size"),
+    $(sanitize_num "$duration"),
+    '$(sqlite3_escape "$downloaded_at")'
+);
+SQL
+        ((n++))
+    done < <(sqlite3 -separator $'\t' "$src" "SELECT url, title, format, status, file_path, file_size, duration, downloaded_at FROM downloads" 2>/dev/null)
+
+    echo "[DB] Migrated $n rows from $src to cloud ($MYSQL_DB@$MYSQL_HOST)."
 }
 
 # === Main: run if executed directly ===
@@ -188,7 +322,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "${1:-help}" in
         init)
             db_init
-            echo "[DB] Database initialized: $DB_FILE"
+            echo "[DB] Database initialized (mode=$DB_MODE): ${DB_FILE:-$DB_URI}"
             ;;
         exists)
             db_url_exists "$2" && echo "yes" || echo "no"
@@ -216,6 +350,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             db_init
             db_migrate_from_txt "${2:-/app/.yt-dlp-config/history.txt}"
             ;;
+        migrate-cloud)
+            db_init
+            db_migrate_to_cloud "${2:-/app/.yt-dlp-config/history.db}"
+            ;;
         help|*)
             echo "Usage: $0 <command> [args]"
             echo ""
@@ -229,6 +367,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             echo "  stats             Show download statistics"
             echo "  title <url>       Get title from history"
             echo "  migrate [file]    Migrate from history.txt"
+            echo "  migrate-cloud [sqlite.db]  Push local history to cloud DB"
+            echo ""
+            echo "Backend is chosen by DB_MODE (.env): local (SQLite) | cloud (MySQL)."
             ;;
     esac
 fi

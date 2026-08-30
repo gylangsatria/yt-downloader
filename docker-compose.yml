@@ -4,7 +4,7 @@ services:
       context: .
     container_name: yt-downloader
     labels:
-      - "app.version=2.1.0"
+      - "app.version=3.0.0"
       - "app.author=gylangsatria"
       - "app.github=https://github.com/gylangsatria"
     stdin_open: true
@@ -19,5 +19,7 @@ services:
       - USER_GID=${GID:-1000}
       - VIDEO_DIR=/app/downloads/Videos
       - MUSIC_DIR=/app/downloads/Music
+      - DB_MODE=${DB_MODE:-local}
+      - DB_URI=${DB_URI:-}
       - HOME=/app
     restart: unless-stopped

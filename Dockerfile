@@ -1,6 +1,6 @@
 FROM alpine:3.19
 
-LABEL version="2.1.0" \
+LABEL version="3.0.0" \
       description="YouTube/Twitter Downloader - Automatic Mode" \
       author="gylangsatria" \
       github="https://github.com/gylangsatria"
@@ -14,6 +14,7 @@ RUN apk add --no-cache \
     curl \
     su-exec \
     sqlite \
+    mariadb-client \
     inotify-tools \
     findutils \
     && python3 -m venv /opt/venv \
