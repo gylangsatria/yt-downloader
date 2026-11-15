@@ -15,6 +15,7 @@
 - **Watch mode** — Just write a URL in `data/config/queue.txt`, the container processes it automatically
 - **Audio auto-detect** — URLs from SoundCloud/Bandcamp/Spotify are automatically converted to MP3
 - **Twitter/X support** — Download videos from Twitter/X at the best quality
+- **PornHub support** — Single videos and whole model/channel/playlist pages (`/model/<name>` downloads every video into its own folder)
 - **Auto fallback** — Tries various formats if the primary method fails
 - **Duplicate detection** — URLs that have already been downloaded are automatically skipped
 - **Local SQLite History** — Download history stored in a local SQLite database
@@ -44,6 +45,10 @@
 # Twitter/X
 ./run.sh "https://x.com/user/status/2072712422025023645"
 ./run.sh "https://twitter.com/user/status/2072712422025023645"
+
+# PornHub — single video, or a whole model profile (all videos)
+./run.sh "https://www.pornhub.com/view_video.php?viewkey=6af4cf466efb6"
+./run.sh "https://www.pornhub.com/model/lenadiass"
 ```
 
 ### 2b. Queue URL (auto-process)
@@ -269,6 +274,18 @@ Twitter/X **requires cookies** from a logged-in account. Even public videos ofte
 ```
 
 > **Tip:** If you get an error saying "Twitter requires logging in", your cookies have expired. Re-export cookies from your browser.
+
+---
+
+## PornHub — DNS Notes (Indonesia)
+
+PornHub is blocked by several Indonesian ISPs (IndiHome/Telkom) **at DNS level**: `www.pornhub.com` resolves to `202.169.44.80`, which is unreachable. `docker-compose.yml` therefore pins public resolvers (`1.1.1.1`, `1.0.0.1`) for the downloader container. No cookies or VPN needed.
+
+```bash
+./run.sh "https://www.pornhub.com/model/lenadiass"   # whole profile -> downloads/Videos/pornhub/lenadiass/
+```
+
+> Re-running a profile is safe: existing files are skipped, newly uploaded videos get downloaded. Set `dns:` to your own resolver in `docker-compose.yml` if `1.1.1.1` is blocked too.
 
 ---
 

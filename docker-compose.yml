@@ -22,6 +22,11 @@ services:
       - DB_MODE=${DB_MODE:-local}
       - DB_URI=${DB_URI:-}
       - HOME=/app
+    # Public resolvers: Indonesian ISPs (IndiHome/Telkom) DNS-poison blocked sites
+    # (pornhub.com -> 202.169.44.80, unreachable), so the real IP never resolves.
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
     restart: unless-stopped
     # Host network: fixes container egress on WSL2 mirrored net (host has working internet),
     # needed so yt-dlp can reach download sources.

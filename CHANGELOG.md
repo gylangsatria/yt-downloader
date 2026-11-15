@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.2.0 (2026-11-15)
+### Added
+- **PornHub support** — single videos plus model/user/channel/pornstar/playlist pages. Profile URLs are downloaded with `--yes-playlist` into `downloads/Videos/pornhub/<profile>/`; already-downloaded files are skipped on re-runs.
+- `docker-compose.yml` — `dns: 1.1.1.1, 1.0.0.1` for the downloader, since Indonesian ISPs DNS-poison `pornhub.com` to an unreachable IP.
+
+### Fixed
+- `entrypoint.sh` — restart loop: `id -u "$USER_UID"` never matched a numeric UID on busybox, so `adduser` was re-run on every boot and failed with `user already in use` under `set -e`. UID lookup now goes through `getent passwd`.
+- Playlist/profile downloads no longer silently download only the first video (`--no-playlist` was hard-coded in the main, title and fallback commands). Profile URLs are re-scanned on every run instead of being skipped by history, so new uploads are picked up.
+
 ## v3.1.0 (2026-08-30)
 ### Added
 - **Three database backends, chosen from `.env`** — Local SQLite, Cloud MySQL via direct VPS IP, or Cloud MySQL via Cloudflare tunnel. Switching only needs the correct `DB_URI`/`DB_MODE`.

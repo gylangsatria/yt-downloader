@@ -45,10 +45,18 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 # === Cookie file detection ===
 COOKIES_FILE="$CONFIG_DIR/cookies.txt"
 
+# === Profile / playlist pages (PornHub model, user, channel, pornstar, playlist) ===
+is_playlist_url() {
+    echo "$1" | grep -qiE 'pornhub\.com/(model|users?|channels?|pornstars?|playlist)/'
+}
+
 # === Build yt-dlp options ===
+# Arg 1 = "playlist" to download every entry of a profile/playlist page, else a single video
 build_ytdlp_opts() {
+    local pl_flag="--no-playlist"
+    [[ "${1:-}" == "playlist" ]] && pl_flag="--yes-playlist"
     local opts=(
-        "--no-playlist"
+        "$pl_flag"
         "--no-warnings"
         "--restrict-filenames"
         "--progress"
@@ -75,8 +83,8 @@ download_url() {
     local output_dir="$VIDEO_DIR"
     local is_audio=false
 
-    # === Check if already downloaded ===
-    if db_url_exists "$url"; then
+    # === Check if already downloaded (profiles are re-scanned: yt-dlp skips existing files, new uploads get grabbed) ===
+    if db_url_exists "$url" && ! is_playlist_url "$url"; then
         local existing_info
         existing_info=$(db_get_info "$url")
         local existing_title
@@ -111,9 +119,22 @@ download_url() {
         log "Detected Twitter/X source"
     fi
 
-    # Subfolder organization by extractor
+    # Auto-detect profile/playlist pages — every entry must be downloaded, not just the first
+    local pl_flag="--no-playlist"
+    local slug=""
+    if is_playlist_url "$url"; then
+        pl_flag="--yes-playlist"
+        slug=$(echo "$url" | sed -nE 's#.*pornhub\.com/[a-z]+/([A-Za-z0-9_-]+).*#\1#p' | head -n1)
+        log "Detected profile/playlist source${slug:+: $slug}"
+    fi
+
+    # Subfolder organization by extractor (profile pages: by profile name, no probe needed)
     local extractor
-    extractor=$(yt-dlp --no-playlist --print "extractor" "$url" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/ /_/g')
+    if [[ -n "$slug" ]]; then
+        extractor="pornhub/$slug"
+    else
+        extractor=$(yt-dlp --no-playlist --print "extractor" "$url" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/ /_/g')
+    fi
     [[ -z "$extractor" ]] && extractor="generic"
     
     output_dir="$output_dir/$extractor"
@@ -123,7 +144,7 @@ download_url() {
     local opts=()
     while IFS= read -r line; do
         opts+=("$line")
-    done < <(build_ytdlp_opts)
+    done < <(build_ytdlp_opts "${slug:+playlist}")
 
     # Audio options
     if [[ "$is_audio" == "true" ]]; then
@@ -146,9 +167,13 @@ download_url() {
     opts+=("-o" "%(title).200s.%(ext)s")
     opts+=("$url")
 
-    # Get title for history — use --print instead of deprecated --get-title
+    # Title for history — profiles use the slug, no extra yt-dlp request
     local title
-    title=$(yt-dlp --no-playlist --print "%(title)s" "$url" 2>/dev/null || echo "unknown")
+    if [[ -n "$slug" ]]; then
+        title="$slug"
+    else
+        title=$(yt-dlp --no-playlist --print "%(title)s" "$url" 2>/dev/null || echo "unknown")
+    fi
 
     # Execute download — show progress in terminal, log everything
     if yt-dlp "${opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
@@ -175,7 +200,7 @@ download_url() {
 
         # Retry with basic format
         log "[RETRY] Trying fallback format..."
-        local fallback_opts=(--no-playlist --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
+        local fallback_opts=("$pl_flag" --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then

@@ -20,7 +20,8 @@ if ! getent group "$USER_GID" > /dev/null 2>&1; then
 fi
 
 # Create user with matching UID
-if ! id -u "$USER_UID" > /dev/null 2>&1; then
+# NOTE: busybox `id -u <numeric>` fails ("unknown user 1000"), so look the UID up in /etc/passwd
+if ! getent passwd "$USER_UID" > /dev/null 2>&1; then
     if getent group "$USER_GID" > /dev/null 2>&1; then
         # Group exists, create user with that existing group
         EXISTING_GROUP_NAME=$(getent group "$USER_GID" | cut -d: -f1)
@@ -31,7 +32,7 @@ if ! id -u "$USER_UID" > /dev/null 2>&1; then
     fi
 fi
 # Re-evaluate username from UID in case it was created with a different group name
-USERNAME=$(id -nu "$USER_UID" 2>/dev/null || echo "$USERNAME")
+USERNAME=$(getent passwd "$USER_UID" | cut -d: -f1 || echo "$USERNAME")
 
 # === Fix permissions on all mounted directories ===
 chown -R "$USER_UID:$USER_GID" /app/downloads 2>/dev/null || true
