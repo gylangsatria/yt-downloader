@@ -237,6 +237,16 @@ db_get_title() {
     db_exec <<< "SELECT title FROM downloads WHERE url = '$(sqlite3_escape "$url")' AND title != '' ORDER BY downloaded_at DESC LIMIT 1"
 }
 
+# === List URLs by status (empty = all) ===
+db_list_urls() {
+    local status="${1:-}"
+    if [[ -n "$status" ]]; then
+        db_exec <<< "SELECT url FROM downloads WHERE status = '$status' ORDER BY downloaded_at DESC"
+    else
+        db_exec <<< "SELECT url FROM downloads ORDER BY downloaded_at DESC"
+    fi
+}
+
 # === Escape single quotes (works for both SQLite and MySQL) ===
 sqlite3_escape() {
     local str="$1"

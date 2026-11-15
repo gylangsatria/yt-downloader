@@ -138,6 +138,20 @@ CF_ACCESS_CLIENT_SECRET=<Access Client Secret>
 
 > Changing only `DB_URI` / `DB_MODE` is enough; the tunnel container lifecycle is managed automatically by `run.sh`.
 
+## Retry & Repair (`.env`)
+
+On every container start the downloader repairs itself before touching the queue:
+
+```env
+RESCAN_PROFILES=true      # re-queue profile/playlist URLs from history (missing + new uploads)
+RETRY_FAILED_URLS=true    # re-queue single videos whose last attempt failed
+PARTIAL_MAX_AGE_H=6       # delete .part/.ytdl leftovers older than 6h so they restart clean
+MAX_ATTEMPTS=3            # main + fallback attempt per URL, repeated this many times
+RETRY_SLEEP=30            # seconds between attempts
+```
+
+Files already on disk are skipped by yt-dlp (identical `-o` template + `--restrict-filenames`), so a rescan only fetches what is actually missing. Set `PARTIAL_MAX_AGE_H=0` to drop any leftover fragment regardless of age.
+
 ### Available commands:
 
 ```bash

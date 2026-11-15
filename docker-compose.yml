@@ -21,6 +21,11 @@ services:
       - MUSIC_DIR=/app/downloads/Music
       - DB_MODE=${DB_MODE:-local}
       - DB_URI=${DB_URI:-}
+      - RESCAN_PROFILES=${RESCAN_PROFILES:-true}
+      - RETRY_FAILED_URLS=${RETRY_FAILED_URLS:-true}
+      - PARTIAL_MAX_AGE_H=${PARTIAL_MAX_AGE_H:-6}
+      - MAX_ATTEMPTS=${MAX_ATTEMPTS:-3}
+      - RETRY_SLEEP=${RETRY_SLEEP:-30}
       - HOME=/app
     # Public resolvers: Indonesian ISPs (IndiHome/Telkom) DNS-poison blocked sites
     # (pornhub.com -> 202.169.44.80, unreachable), so the real IP never resolves.

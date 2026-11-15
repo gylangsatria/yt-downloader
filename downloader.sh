@@ -37,6 +37,21 @@ fi
 DEFAULT_FORMAT="${DEFAULT_FORMAT:-bv*+ba/best}"
 AUDIO_FORMAT="${AUDIO_FORMAT:-ba/bestaudio}"
 
+# === Retry / repair settings (override in .env) ===
+# RESCAN_PROFILES     - re-queue profile/playlist URLs from history on start, so
+#                       videos that failed earlier or were uploaded later get grabbed
+# RETRY_FAILED_URLS   - re-queue single video URLs whose last attempt failed
+# PARTIAL_MAX_AGE_H   - delete .part/.ytdl leftovers older than N hours (0 = any age)
+# MAX_ATTEMPTS        - how many times a URL is retried (main + fallback per attempt)
+# RETRY_SLEEP         - seconds to wait between attempts
+RESCAN_PROFILES="${RESCAN_PROFILES:-true}"
+RETRY_FAILED_URLS="${RETRY_FAILED_URLS:-true}"
+PARTIAL_MAX_AGE_H="${PARTIAL_MAX_AGE_H:-6}"
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
+RETRY_SLEEP="${RETRY_SLEEP:-30}"
+[[ "$MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || MAX_ATTEMPTS=3
+[[ "$RETRY_SLEEP" =~ ^[0-9]+$ ]] || RETRY_SLEEP=30
+
 LOG_FILE="$LOG_DIR/download_$(date +%Y%m%d_%H%M%S).log"
 
 # === Logging ===
@@ -80,6 +95,19 @@ build_ytdlp_opts() {
 
 # Clean up logs older than 7 days
 find "$LOG_DIR" -name 'download_*.log' -mtime +7 -delete 2>/dev/null || true
+
+# === Record a finished download (path = newest file in the output dir) ===
+record_download() {
+    local url="$1" title="$2" format="$3" output_dir="$4"
+    local file_path file_size=0
+    file_path=$(find "$output_dir" -maxdepth 1 -type f -newer "$QUEUE_FILE" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
+    if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
+        file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
+    fi
+    [[ -n "$file_path" ]] && [[ -f "$file_path" ]] && file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
+    db_record_success "$url" "$title" "$format" "$file_path" "$file_size" "0"
+    log "[SUCCESS] Downloaded ($format): $title -> $output_dir"
+}
 
 # === Download single URL ===
 download_url() {
@@ -180,51 +208,38 @@ download_url() {
         title=$(yt-dlp "${PROBE_COOKIES[@]}" --no-playlist --print "%(title)s" "$url" 2>/dev/null || echo "unknown")
     fi
 
-    # Execute download — show progress in terminal, log everything
-    if yt-dlp "${opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-        # Get the actual file path without an extra yt-dlp request:
-        # Scan the output dir for the most recently modified file
-        local file_path=""
-        local file_size=0
-        file_path=$(find "$output_dir" -maxdepth 1 -type f -newer "$QUEUE_FILE" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
-        if [[ -z "$file_path" ]] || [[ ! -f "$file_path" ]]; then
-            # Fallback: just get the most recently modified file in the dir
-            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
-        fi
-        if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
-            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
+    # Execute download — show progress in terminal, log everything.
+    # MAX_ATTEMPTS / RETRY_SLEEP from .env: PornHub's JS challenge and 5xx pages are
+    # intermittent, so a retry usually gets through. Existing files are skipped on
+    # every attempt, so each pass only fetches what is still missing.
+    local attempt
+    for (( attempt = 1; attempt <= MAX_ATTEMPTS; attempt++ )); do
+        if [[ "$attempt" -gt 1 ]]; then
+            log "[RETRY] Attempt $attempt/$MAX_ATTEMPTS in ${RETRY_SLEEP}s: $url"
+            sleep "$RETRY_SLEEP"
         fi
 
-        # Record to SQLite
-        db_record_success "$url" "$title" "best" "$file_path" "$file_size" "0"
-        log "[SUCCESS] Downloaded: $title -> $output_dir"
-        return 0
-    else
-        log "[ERROR] Failed: $url"
-        db_record_failure "$url" "$title" "best"
+        if yt-dlp "${opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
+            record_download "$url" "$title" "best" "$output_dir"
+            return 0
+        fi
+        log "[ERROR] Failed (attempt $attempt/$MAX_ATTEMPTS): $url"
 
-        # Retry with basic format
-        log "[RETRY] Trying fallback format..."
-        # Same filename rules as the main attempt, otherwise yt-dlp sees different
-        # names on retry and downloads duplicates instead of skipping existing files
+        # Retry with basic format; same filename rules as the main attempt, otherwise
+        # yt-dlp sees different names and downloads duplicates instead of skipping
         local fallback_opts=("$pl_flag" --no-warnings --restrict-filenames --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
-            local file_path=""
-            local file_size=0
-            file_path=$(find "$output_dir" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || echo "")
-            if [[ -n "$file_path" ]] && [[ -f "$file_path" ]]; then
-                file_size=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
-            fi
-            db_record_success "$url" "$title" "fallback" "$file_path" "$file_size" "0"
-            log "[SUCCESS] Downloaded (fallback): $title -> $output_dir"
+            record_download "$url" "$title" "fallback" "$output_dir"
             return 0
-        else
-            log "[FAILED] All attempts failed: $url"
-            return 1
         fi
-    fi
+        log "[ERROR] Fallback failed (attempt $attempt/$MAX_ATTEMPTS): $url"
+    done
+
+    db_record_failure "$url" "$title" "best"
+    log "[FAILED] All attempts failed: $url"
+    return 1
 }
 
 # === Proper queue processing — line-by-line to avoid race conditions ===
@@ -274,6 +289,44 @@ process_queue_safe() {
     fi
 }
 
+# === Housekeeping: delete stale partial downloads so yt-dlp restarts them clean ===
+purge_stale_partials() {
+    [[ "$PARTIAL_MAX_AGE_H" =~ ^[0-9]+$ ]] || return 0
+    local removed
+    # Fresh partials are left alone so an in-flight download is never touched
+    removed=$(find "$VIDEO_DIR" "$MUSIC_DIR" -type f \
+        \( -name '*.part' -o -name '*.part-Frag*' -o -name '*.ytdl' \) \
+        -mmin +$(( PARTIAL_MAX_AGE_H * 60 )) -print -delete 2>/dev/null | wc -l)
+    [[ "$removed" -gt 0 ]] && log "[CLEAN] Removed $removed stale partial file(s) older than ${PARTIAL_MAX_AGE_H}h"
+    return 0
+}
+
+# === Re-queue work from history (profiles every start, failed singles too) ===
+queue_add() {
+    grep -qxF "$1" "$QUEUE_FILE" 2>/dev/null && return 0
+    echo "$1" >> "$QUEUE_FILE"
+    log "[RETRY] Re-queued: $1"
+}
+
+requeue_from_history() {
+    local url
+    if [[ "$RESCAN_PROFILES" == "true" ]]; then
+        while IFS= read -r url; do
+            [[ -z "$url" ]] && continue
+            is_playlist_url "$url" || continue
+            queue_add "$url"
+        done < <(db_list_urls)
+    fi
+    if [[ "$RETRY_FAILED_URLS" == "true" ]]; then
+        while IFS= read -r url; do
+            [[ -z "$url" ]] && continue
+            is_playlist_url "$url" && continue
+            queue_add "$url"
+        done < <(db_list_urls failed)
+    fi
+    return 0
+}
+
 # === Watch mode: monitor queue file ===
 watch_mode() {
     log "=== Watch mode started ==="
@@ -281,6 +334,10 @@ watch_mode() {
     log "Add URLs to $QUEUE_FILE (one per line)"
     log "Output: Videos -> $VIDEO_DIR | Music -> $MUSIC_DIR"
     echo ""
+
+    # Retry/repair pass before the first queue run (all controlled from .env)
+    purge_stale_partials
+    requeue_from_history
 
     # Initial queue processing
     process_queue_safe
