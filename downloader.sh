@@ -200,7 +200,9 @@ download_url() {
 
         # Retry with basic format
         log "[RETRY] Trying fallback format..."
-        local fallback_opts=("$pl_flag" --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
+        # Same filename rules as the main attempt, otherwise yt-dlp sees different
+        # names on retry and downloads duplicates instead of skipping existing files
+        local fallback_opts=("$pl_flag" --no-warnings --restrict-filenames --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
