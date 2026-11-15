@@ -25,6 +25,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Download history DB dumps (may contain personal data)
+backups/
+
 # Docker env
 .env
 

@@ -165,6 +165,30 @@ docker compose exec yt-downloader /app/db_history.sh migrate-local [history.db]
 - Duplicate detection is **global** in `cloud` mode: download on PC 1 → PC 2 skips it (`[SKIP] Already downloaded`).
 - Only **history** is shared. Video files stay on the PC that downloaded them (`downloads/` is not synced).
 
+### Backup & Restore (cloud DB → moving VM/PC)
+
+`db_backup.sh` dumps/restores the **cloud history DB** using the connection info already in `.env` (it reuses `DB_URI` + the tunnel). A one-off `mariadb:11` client container does the work — nothing extra to install.
+
+```bash
+# Backup -> ./backups/<db>_<timestamp>.sql.gz  (+ .sha256 checksum)
+./db_backup.sh
+
+# List / verify local backups
+./db_backup.sh list
+./db_backup.sh verify backups/*.sql.gz
+
+# Restore a backup INTO the cloud DB
+./db_backup.sh restore backups/yt-downloader-history_YYYYMMDD_HHMMSS.sql.gz
+
+# Live DB was wiped and you want the backup back on top of it:
+./db_backup.sh restore backups/...sql.gz --db yt-downloader-history --yes
+```
+
+- By default `restore` targets the database name declared **inside the dump**, and asks you to type the DB name to confirm — so you don't silently clobber production. Pass `--db <name>` to force a target, `--yes` to skip the prompt (for scripting/automation).
+- The tunnel container is started automatically if it isn't running. Direct-VPS-IP `DB_URI` (no `127.0.0.1`) works too — no tunnel needed.
+- Move to a new VM: copy the project (with `backups/`), point `.env` at the new/target DB, then `./db_backup.sh restore <file> --db <name> --yes`.
+
+
 First-run setup with a cloud database (e.g. from a machine that already has local history):
 
 ```bash
