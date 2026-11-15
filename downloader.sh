@@ -45,6 +45,11 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 # === Cookie file detection ===
 COOKIES_FILE="$CONFIG_DIR/cookies.txt"
 
+# Probes (extractor/title) need cookies too, otherwise PornHub serves the JS
+# challenge page and the extractor is detected as "generic"
+PROBE_COOKIES=()
+[[ -f "$COOKIES_FILE" ]] && PROBE_COOKIES=(--cookies "$COOKIES_FILE")
+
 # === Profile / playlist pages (PornHub model, user, channel, pornstar, playlist) ===
 is_playlist_url() {
     echo "$1" | grep -qiE 'pornhub\.com/(model|users?|channels?|pornstars?|playlist)/'
@@ -133,7 +138,7 @@ download_url() {
     if [[ -n "$slug" ]]; then
         extractor="pornhub/$slug"
     else
-        extractor=$(yt-dlp --no-playlist --print "extractor" "$url" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/ /_/g')
+        extractor=$(yt-dlp "${PROBE_COOKIES[@]}" --no-playlist --print "extractor" "$url" 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/ /_/g')
     fi
     [[ -z "$extractor" ]] && extractor="generic"
     
@@ -172,7 +177,7 @@ download_url() {
     if [[ -n "$slug" ]]; then
         title="$slug"
     else
-        title=$(yt-dlp --no-playlist --print "%(title)s" "$url" 2>/dev/null || echo "unknown")
+        title=$(yt-dlp "${PROBE_COOKIES[@]}" --no-playlist --print "%(title)s" "$url" 2>/dev/null || echo "unknown")
     fi
 
     # Execute download — show progress in terminal, log everything
