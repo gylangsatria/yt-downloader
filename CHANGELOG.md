@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+### Changed
+- **Faster downloads** — yt-dlp now runs with `-N $FRAGMENT_WORKERS` (default `8`) and `--http-chunk-size $HTTP_CHUNK_SIZE` (default `10M`), both settable in `.env`. Sources throttle per connection, so parallel fragment/range fetches use far more of the available bandwidth. Fallback download got `-N` too.
+
 ## v3.2.0 (2026-11-15)
 ### Added
 - **PornHub support** — single videos plus model/user/channel/pornstar/playlist pages. Profile URLs are downloaded with `--yes-playlist` into `downloads/Videos/pornhub/<profile>/`; already-downloaded files are skipped on re-runs.

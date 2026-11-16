@@ -150,6 +150,15 @@ MAX_ATTEMPTS=3            # main + fallback attempt per URL, repeated this many 
 RETRY_SLEEP=30            # seconds between attempts
 ```
 
+### Download speed (`.env`)
+
+```env
+FRAGMENT_WORKERS=8        # parallel connections per download (yt-dlp -N)
+HTTP_CHUNK_SIZE=10M       # chunk size for parallel range requests (plain HTTP only)
+```
+
+Sources throttle **per connection**, so one connection rarely fills the link. `FRAGMENT_WORKERS` splits HLS/DASH downloads into that many parallel fragment fetches; `HTTP_CHUNK_SIZE` does the same for plain HTTP files via range requests. Lower `FRAGMENT_WORKERS` (e.g. `4`, or `1` to disable) if the source starts answering `429`/`403`.
+
 Files already on disk are skipped by yt-dlp (identical `-o` template + `--restrict-filenames`), so a rescan only fetches what is actually missing. Set `PARTIAL_MAX_AGE_H=0` to drop any leftover fragment regardless of age.
 
 ### Available commands:

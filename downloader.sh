@@ -37,6 +37,16 @@ fi
 DEFAULT_FORMAT="${DEFAULT_FORMAT:-bv*+ba/best}"
 AUDIO_FORMAT="${AUDIO_FORMAT:-ba/bestaudio}"
 
+# === Parallel download tuning (override in .env) ===
+# FRAGMENT_WORKERS - connections per download (yt-dlp -N). CDNs throttle per
+#                    connection, so >1 is usually faster; too many can trip rate limits.
+# HTTP_CHUNK_SIZE  - split plain HTTP downloads into parallel range requests
+#                    (no effect on HLS/DASH, where -N does the work)
+FRAGMENT_WORKERS="${FRAGMENT_WORKERS:-8}"
+HTTP_CHUNK_SIZE="${HTTP_CHUNK_SIZE:-10M}"
+[[ "$FRAGMENT_WORKERS" =~ ^[1-9][0-9]*$ ]] || FRAGMENT_WORKERS=8
+[[ "$HTTP_CHUNK_SIZE" =~ ^[1-9][0-9]*[KMG]?$ ]] || HTTP_CHUNK_SIZE=10M
+
 # === Retry / repair settings (override in .env) ===
 # RESCAN_PROFILES     - re-queue profile/playlist URLs from history on start, so
 #                       videos that failed earlier or were uploaded later get grabbed
@@ -80,6 +90,8 @@ build_ytdlp_opts() {
         "--no-warnings"
         "--restrict-filenames"
         "--progress"
+        "-N" "$FRAGMENT_WORKERS"
+        "--http-chunk-size" "$HTTP_CHUNK_SIZE"
     )
 
     # Auto-use cookies.txt if available
@@ -227,7 +239,7 @@ download_url() {
 
         # Retry with basic format; same filename rules as the main attempt, otherwise
         # yt-dlp sees different names and downloads duplicates instead of skipping
-        local fallback_opts=("$pl_flag" --no-warnings --restrict-filenames --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
+        local fallback_opts=("$pl_flag" --no-warnings --restrict-filenames -N "$FRAGMENT_WORKERS" --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
         [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
