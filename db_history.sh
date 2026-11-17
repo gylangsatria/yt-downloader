@@ -247,6 +247,36 @@ db_list_urls() {
     fi
 }
 
+# === List single-video URLs whose last failed attempt is older than N hours ===
+# Profile/playlist pages are excluded: they are the RESCAN_PROFILES job.
+db_list_stale_failed_urls() {
+    local hours
+    hours=$(sanitize_num "${1:-0}")
+    if [[ "$DB_MODE" == "cloud" ]]; then
+        db_exec <<SQL
+SELECT url FROM downloads WHERE status = 'failed'
+    AND downloaded_at <= DATE_SUB(NOW(), INTERVAL $hours HOUR)
+    AND url NOT LIKE '%pornhub.com/model/%'
+    AND url NOT LIKE '%/users/%'
+    AND url NOT LIKE '%/channels/%'
+    AND url NOT LIKE '%/pornstars/%'
+    AND url NOT LIKE '%/playlist/%'
+ORDER BY downloaded_at DESC;
+SQL
+    else
+        db_exec <<SQL
+SELECT url FROM downloads WHERE status = 'failed'
+    AND downloaded_at <= datetime('now','localtime','-$hours hours')
+    AND url NOT LIKE '%pornhub.com/model/%'
+    AND url NOT LIKE '%/users/%'
+    AND url NOT LIKE '%/channels/%'
+    AND url NOT LIKE '%/pornstars/%'
+    AND url NOT LIKE '%/playlist/%'
+ORDER BY downloaded_at DESC;
+SQL
+    fi
+}
+
 # === Escape single quotes (works for both SQLite and MySQL) ===
 sqlite3_escape() {
     local str="$1"

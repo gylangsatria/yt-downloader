@@ -13,6 +13,7 @@ MUSIC_DIR="${MUSIC_DIR:-/app/downloads/Music}"
 LOG_DIR="${LOG_DIR:-/app/.yt-dlp-logs}"
 CONFIG_DIR="${CONFIG_DIR:-/app/.yt-dlp-config}"
 QUEUE_FILE="$CONFIG_DIR/queue.txt"
+REQUEUE_MARKER="$CONFIG_DIR/.last_requeue"
 HISTORY_FILE="$CONFIG_DIR/history.txt"
 CONFIG_FILE="$CONFIG_DIR/settings.conf"
 DB_FILE="${DB_FILE:-$CONFIG_DIR/history.db}"
@@ -51,11 +52,16 @@ HTTP_CHUNK_SIZE="${HTTP_CHUNK_SIZE:-10M}"
 # RESCAN_PROFILES     - re-queue profile/playlist URLs from history on start, so
 #                       videos that failed earlier or were uploaded later get grabbed
 # RETRY_FAILED_URLS   - re-queue single video URLs whose last attempt failed
+# REQUEUE_COOLDOWN_H  - hours a failed single URL waits before it is re-queued
+#                       (without this, every container start re-queues the same
+#                       failures forever and the queue becomes noise)
 # PARTIAL_MAX_AGE_H   - delete .part/.ytdl leftovers older than N hours (0 = any age)
 # MAX_ATTEMPTS        - how many times a URL is retried (main + fallback per attempt)
 # RETRY_SLEEP         - seconds to wait between attempts
 RESCAN_PROFILES="${RESCAN_PROFILES:-true}"
 RETRY_FAILED_URLS="${RETRY_FAILED_URLS:-true}"
+REQUEUE_COOLDOWN_H="${REQUEUE_COOLDOWN_H:-12}"
+[[ "$REQUEUE_COOLDOWN_H" =~ ^[0-9]+$ ]] || REQUEUE_COOLDOWN_H=12
 PARTIAL_MAX_AGE_H="${PARTIAL_MAX_AGE_H:-6}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 RETRY_SLEEP="${RETRY_SLEEP:-30}"
@@ -317,11 +323,13 @@ purge_stale_partials() {
 queue_add() {
     grep -qxF "$1" "$QUEUE_FILE" 2>/dev/null && return 0
     echo "$1" >> "$QUEUE_FILE"
-    log "[RETRY] Re-queued: $1"
+    ((requeued++))
+    return 0
 }
 
 requeue_from_history() {
     local url
+    requeued=0
     if [[ "$RESCAN_PROFILES" == "true" ]]; then
         while IFS= read -r url; do
             [[ -z "$url" ]] && continue
@@ -334,31 +342,65 @@ requeue_from_history() {
             [[ -z "$url" ]] && continue
             is_playlist_url "$url" && continue
             queue_add "$url"
-        done < <(db_list_urls failed)
+        done < <(db_list_stale_failed_urls "$REQUEUE_COOLDOWN_H")
     fi
+    [[ "${requeued:-0}" -gt 0 ]] && log "[RETRY] Re-queued $requeued URL(s) from history"
     return 0
+}
+
+# WATCH_MODE - simple = queue.txt is the only source: nothing is ever re-queued
+#              from history, so deleting a line is permanent (no noise).
+#              full   = repair/rebuild from history, but never more often than
+#              REQUEUE_INTERVAL_H hours (0 = every start).
+WATCH_MODE="${WATCH_MODE:-simple}"
+REQUEUE_INTERVAL_H="${REQUEUE_INTERVAL_H:-6}"
+[[ "$REQUEUE_INTERVAL_H" =~ ^[0-9]+$ ]] || REQUEUE_INTERVAL_H=6
+
+requeue_due() {
+    [[ "$REQUEUE_INTERVAL_H" -eq 0 ]] && return 0
+    [[ ! -f "$REQUEUE_MARKER" ]] && return 0
+    local last now age
+    last=$(cat "$REQUEUE_MARKER" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    age=$(( now - last ))
+    [[ "$age" -ge $(( REQUEUE_INTERVAL_H * 3600 )) ]]
+}
+
+run_requeue() {
+    requeue_from_history
+    date +%s > "$REQUEUE_MARKER" 2>/dev/null || true
 }
 
 # === Watch mode: monitor queue file ===
 watch_mode() {
-    log "=== Watch mode started ==="
+    log "=== Watch mode started (mode: $WATCH_MODE) ==="
     log "Watching: $QUEUE_FILE"
     log "Add URLs to $QUEUE_FILE (one per line)"
     log "Output: Videos -> $VIDEO_DIR | Music -> $MUSIC_DIR"
     echo ""
 
-    # Retry/repair pass before the first queue run (all controlled from .env)
+    # Repair/rebuild pass before the first queue run (all controlled from .env)
     purge_stale_partials
-    requeue_from_history
+    if [[ "$WATCH_MODE" != "simple" ]] && requeue_due; then
+        run_requeue
+    elif [[ "$WATCH_MODE" == "simple" ]]; then
+        log "[SKIP] History rebuild disabled (WATCH_MODE=simple, queue.txt is the source)"
+    else
+        log "[SKIP] History rebuild skipped (last run < ${REQUEUE_INTERVAL_H}h ago)"
+    fi
 
     # Initial queue processing
     process_queue_safe
 
     # Monitor for changes using inotify if available, else poll
+    local interval_due='[[ "$WATCH_MODE" != "simple" && "$REQUEUE_INTERVAL_H" -gt 0 ]] && requeue_due'
     if command -v inotifywait &> /dev/null; then
-        while inotifywait -q -e close_write,moved_to "$QUEUE_FILE" 2>/dev/null; do
-            sleep 1
-            process_queue_safe
+        while true; do
+            inotifywait -q -t 300 -e close_write,moved_to "$QUEUE_FILE" 2>/dev/null && { sleep 1; process_queue_safe; }
+            if eval "$interval_due"; then
+                run_requeue
+                process_queue_safe
+            fi
         done
     else
         local last_mtime=$(stat -c %Y "$QUEUE_FILE" 2>/dev/null || echo 0)
@@ -366,6 +408,10 @@ watch_mode() {
             local current_mtime=$(stat -c %Y "$QUEUE_FILE" 2>/dev/null || echo 0)
             if [[ "$current_mtime" -gt "$last_mtime" ]]; then
                 last_mtime="$current_mtime"
+                process_queue_safe
+            fi
+            if eval "$interval_due"; then
+                run_requeue
                 process_queue_safe
             fi
             sleep 5

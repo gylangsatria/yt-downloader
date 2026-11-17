@@ -1,6 +1,16 @@
 # Changelog
 
 ## Unreleased
+### Fixed
+- Queue noise: deleted queue lines came back on every container start because `requeue_from_history` rebuilt `queue.txt` from the DB at boot and failed URLs had no cooldown.
+- Per-URL `[RETRY] Re-queued: <url>` log spam replaced with an aggregate count.
+
+### Added
+- `WATCH_MODE` (default `simple`) — `queue.txt` is the only queue; nothing is re-queued from history, so deleting a line is permanent. `full` keeps the old repair behaviour.
+- `REQUEUE_INTERVAL_H` (default `6`) — history rebuild/repair runs at most once per interval instead of on every start (also enforced at runtime in the inotify loop).
+- `REQUEUE_COOLDOWN_H` (default `12`) — a failed single URL is not re-queued until its last failure is that old (`db_list_stale_failed_urls`).
+- `tests/queue_requeue_selfcheck.sh` — assert-based check for cooldown, dedupe, interval gate and `WATCH_MODE` guards.
+
 ### Changed
 - **Faster downloads** — yt-dlp now runs with `-N $FRAGMENT_WORKERS` (default `8`) and `--http-chunk-size $HTTP_CHUNK_SIZE` (default `10M`), both settable in `.env`. Sources throttle per connection, so parallel fragment/range fetches use far more of the available bandwidth. Fallback download got `-N` too.
 

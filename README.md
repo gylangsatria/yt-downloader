@@ -145,10 +145,15 @@ On every container start the downloader repairs itself before touching the queue
 ```env
 RESCAN_PROFILES=true      # re-queue profile/playlist URLs from history (missing + new uploads)
 RETRY_FAILED_URLS=true    # re-queue single videos whose last attempt failed
+REQUEUE_COOLDOWN_H=12     # hours a failed URL waits before it may be re-queued
+WATCH_MODE=simple         # simple = queue.txt only (delete = gone forever)
+REQUEUE_INTERVAL_H=6      # hours between history rebuilds in WATCH_MODE=full
 PARTIAL_MAX_AGE_H=6       # delete .part/.ytdl leftovers older than 6h so they restart clean
 MAX_ATTEMPTS=3            # main + fallback attempt per URL, repeated this many times
 RETRY_SLEEP=30            # seconds between attempts
 ```
+
+`queue.txt` is **not** the source of truth: history (DB) is. `WATCH_MODE=simple` (default) turns that off — only URLs you write in `data/config/queue.txt` are downloaded, so deleting a line is permanent. Use `WATCH_MODE=full` to also rescan profiles and re-queue stale failures, at most once every `REQUEUE_INTERVAL_H` hours. Deleting `queue.txt` never clears history; failed URLs come back from the DB.
 
 ### Download speed (`.env`)
 
