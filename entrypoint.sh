@@ -46,6 +46,11 @@ chown -R "$USER_UID:$USER_GID" /app/downloads /app/.yt-dlp-logs 2>/dev/null || t
 chown "$USER_UID:$USER_GID" /app/.yt-dlp-config 2>/dev/null || true
 find /app/.yt-dlp-config -mindepth 1 -maxdepth 1 ! -name 'cookies.txt' -exec chown -R "$USER_UID:$USER_GID" {} + 2>/dev/null || true
 
+# yt-dlp aborts every download when handed an empty/garbage cookie jar, so drop it
+if [[ -f /app/.yt-dlp-config/cookies.txt ]] && ! awk -F'\t' '/^[^#]/ && NF >= 7 { found=1; exit } END { exit !found }' /app/.yt-dlp-config/cookies.txt 2>/dev/null; then
+    rm -f /app/.yt-dlp-config/cookies.txt
+fi
+
 # === If first arg is a URL (not a script), prepend downloader ===
 if [[ "$1" == http* ]] || [[ "$1" == *youtube* ]] || [[ "$1" == *youtu.be* ]] || [[ "$1" == *twitter.com* ]] || [[ "$1" == *x.com* ]]; then
     exec su-exec "$USERNAME" /app/downloader.sh "$@"

@@ -69,6 +69,25 @@ check "full + interval 0: polling guard off" "! eval \"$pguard\""
 WATCH_MODE=full REQUEUE_INTERVAL_H=6
 check "full + interval 6: polling guard on" "eval \"$pguard\""
 
+# --- 6. cookie_file_ok: empty/garbage rejected, real Netscape accepted ---
+: > "$COOKIES_FILE"
+check "empty jar rejected" "! cookie_file_ok \"$COOKIES_FILE\""
+printf '\n# Netscape HTTP Cookie File\n' > "$COOKIES_FILE"
+check "header-only jar rejected" "! cookie_file_ok \"$COOKIES_FILE\""
+: > "$COOKIES_FILE"
+printf '\t%s' '.pornhub.com' 'TRUE' '/' 'FALSE' '0' 'il' 'x' >> "$COOKIES_FILE"
+check "Netscape jar accepted" "cookie_file_ok \"$COOKIES_FILE\""
+
+# --- 7. purge_zero_partials: 0-byte stubs dropped, real partials kept ---
+mkdir -p "$VIDEO_DIR/p"
+: > "$VIDEO_DIR/p/dead.mp4.ytdl"
+: > "$VIDEO_DIR/p/dead2.mp4.part"
+printf 'x' > "$VIDEO_DIR/p/live.mp4.part"
+purge_zero_partials >/dev/null 2>&1
+check "0-byte stub removed" "[[ ! -e \"$VIDEO_DIR/p/dead.mp4.ytdl\" && ! -e \"$VIDEO_DIR/p/dead2.mp4.part\" ]]"
+check "real partial kept" "[[ -s \"$VIDEO_DIR/p/live.mp4.part\" ]]"
+rm -f "$COOKIES_FILE"
+
 echo "res=$(grep -c 'Re-queued' "$LOG_FILE" 2>/dev/null || echo 0) log lines"
 echo "PASS=$pass FAIL=$fail"
 rm -rf "$TMP"

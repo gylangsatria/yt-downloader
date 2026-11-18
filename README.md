@@ -164,7 +164,11 @@ HTTP_CHUNK_SIZE=10M       # chunk size for parallel range requests (plain HTTP o
 
 Sources throttle **per connection**, so one connection rarely fills the link. `FRAGMENT_WORKERS` splits HLS/DASH downloads into that many parallel fragment fetches; `HTTP_CHUNK_SIZE` does the same for plain HTTP files via range requests. Lower `FRAGMENT_WORKERS` (e.g. `4`, or `1` to disable) if the source starts answering `429`/`403`.
 
-Files already on disk are skipped by yt-dlp (identical `-o` template + `--restrict-filenames`), so a rescan only fetches what is actually missing. Set `PARTIAL_MAX_AGE_H=0` to drop any leftover fragment regardless of age.
+Files already on disk are skipped by yt-dlp (identical `-o` template + `--restrict-filenames`), so a rescan only fetches what is actually missing. Set `PARTIAL_MAX_AGE_H=0` to drop any leftover fragment regardless of age. 0-byte `.part`/`.ytdl` stubs (left behind by an out-of-disk run) are always deleted at startup, since yt-dlp would try to resume them and stall.
+
+### Cookies
+
+`data/config/cookies.txt` must be a Netscape-format cookie jar. An empty or malformed file is ignored with `[WARN] Ignoring cookies.txt` and deleted at startup — yt-dlp aborts every download otherwise (`does not look like a Netscape format cookies file`). PornHub downloads work without cookies; add a real jar only if the site starts serving the JS challenge page.
 
 ### Available commands:
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 ### Fixed
+- **Empty/garbage `cookies.txt` aborted every download** — an 0-byte or non-Netscape cookie jar made yt-dlp fail with `does not look like a Netscape format cookies file` on every attempt, including the profile rescans. The file is now validated (`cookie_file_ok`); if invalid it is ignored (`[WARN]`) and removed by `entrypoint.sh`, so downloads fall back to the anonymous path (verified working for PornHub).
+- **0-byte `.part`/`.ytdl` leftovers** (left behind by an out-of-disk run) blocked a re-download. `purge_zero_partials` now deletes them at startup, before `purge_stale_partials`.
 - Queue noise: deleted queue lines came back on every container start because `requeue_from_history` rebuilt `queue.txt` from the DB at boot and failed URLs had no cooldown.
 - Per-URL `[RETRY] Re-queued: <url>` log spam replaced with an aggregate count.
 

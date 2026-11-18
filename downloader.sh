@@ -76,10 +76,23 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 # === Cookie file detection ===
 COOKIES_FILE="$CONFIG_DIR/cookies.txt"
 
+# An empty/garbage cookies.txt makes yt-dlp abort every download
+# ("does not look like a Netscape format cookies file"), so treat it as absent.
+cookie_file_ok() {
+    [[ -s "${1:-}" ]] || return 1
+    awk -F'\t' '/^[^#]/ && NF >= 7 { found=1; exit } END { exit !found }' "$1" 2>/dev/null
+}
+
 # Probes (extractor/title) need cookies too, otherwise PornHub serves the JS
 # challenge page and the extractor is detected as "generic"
 PROBE_COOKIES=()
-[[ -f "$COOKIES_FILE" ]] && PROBE_COOKIES=(--cookies "$COOKIES_FILE")
+if [[ -f "$COOKIES_FILE" ]]; then
+    if cookie_file_ok "$COOKIES_FILE"; then
+        PROBE_COOKIES=(--cookies "$COOKIES_FILE")
+    else
+        log "[WARN] Ignoring cookies.txt (empty or not Netscape format): $COOKIES_FILE"
+    fi
+fi
 
 # === Profile / playlist pages (PornHub model, user, channel, pornstar, playlist) ===
 is_playlist_url() {
@@ -101,7 +114,7 @@ build_ytdlp_opts() {
     )
 
     # Auto-use cookies.txt if available
-    if [[ -f "$COOKIES_FILE" ]]; then
+    if cookie_file_ok "$COOKIES_FILE"; then
         # Log to stderr so it doesn't leak into the options array
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using cookies: $COOKIES_FILE" | tee -a "$LOG_FILE" >&2
         opts+=("--cookies" "$COOKIES_FILE")
@@ -246,7 +259,7 @@ download_url() {
         # Retry with basic format; same filename rules as the main attempt, otherwise
         # yt-dlp sees different names and downloads duplicates instead of skipping
         local fallback_opts=("$pl_flag" --no-warnings --restrict-filenames -N "$FRAGMENT_WORKERS" --merge-output-format mp4 -f "best" -P "$output_dir" -o "%(title).200s.%(ext)s")
-        [[ -f "$COOKIES_FILE" ]] && fallback_opts+=(--cookies "$COOKIES_FILE")
+        [[ -f "$COOKIES_FILE" ]] && cookie_file_ok "$COOKIES_FILE" && fallback_opts+=(--cookies "$COOKIES_FILE")
         fallback_opts+=("$url")
         if yt-dlp "${fallback_opts[@]}" 2> >(tee -a "$LOG_FILE" >&2); then
             record_download "$url" "$title" "fallback" "$output_dir"
@@ -319,6 +332,16 @@ purge_stale_partials() {
     return 0
 }
 
+# === Housekeeping: drop 0-byte leftovers so yt-dlp does not resume a dead stub ===
+purge_zero_partials() {
+    local removed
+    removed=$(find "$VIDEO_DIR" "$MUSIC_DIR" -type f -size 0 \
+        \( -name '*.part' -o -name '*.part-Frag*' -o -name '*.ytdl' \) \
+        -print -delete 2>/dev/null | wc -l)
+    [[ "$removed" -gt 0 ]] && log "[CLEAN] Removed $removed empty partial file(s)"
+    return 0
+}
+
 # === Re-queue work from history (profiles every start, failed singles too) ===
 queue_add() {
     grep -qxF "$1" "$QUEUE_FILE" 2>/dev/null && return 0
@@ -380,6 +403,7 @@ watch_mode() {
     echo ""
 
     # Repair/rebuild pass before the first queue run (all controlled from .env)
+    purge_zero_partials
     purge_stale_partials
     if [[ "$WATCH_MODE" != "simple" ]] && requeue_due; then
         run_requeue
