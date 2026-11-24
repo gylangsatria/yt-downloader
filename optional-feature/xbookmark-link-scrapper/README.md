@@ -30,9 +30,9 @@ The following variables can be adjusted at the top of the script:
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `SCROLL_INTERVAL` | `3000` | Delay between scrolls (ms) |
-| `SCROLL_STEP` | `800` | Scroll distance each time (px) |
-| `MAX_UNCHANGED` | `5` | Stop when no new links appear after N scrolls |
-| `MAX_SCROLLS` | `200` | Maximum number of scrolls |
+| `SCROLL_STEP` | `1000` | Scroll distance each time (px) |
+| `MAX_UNCHANGED` | `10` | Stop when no new links appear after N scrolls |
+| `MAX_SCROLLS` | `500` | Maximum number of scrolls |
 
 ## Output
 
