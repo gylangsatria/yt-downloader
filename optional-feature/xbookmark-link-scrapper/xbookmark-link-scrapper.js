@@ -141,14 +141,17 @@ function finishCollection() {
     console.log(`Total ditemukan: ${mediaLinks.length}`);
     
     if (mediaLinks.length > 0) {
-        const blob = new Blob([JSON.stringify(mediaLinks, null, 2)], { type: 'application/json' });
+        // Gabungkan dengan newline, tanpa koma, tanpa quote
+        const textData = mediaLinks.join('\n');
+        const blob = new Blob([textData], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `x_media_${Date.now()}.json`;
+        a.download = `x_links_${Date.now()}.txt`;
         a.click();
+        console.log('File .txt berhasil dibuat. Masukkan isinya ke queue.txt');
     } else {
-        console.error('NOL link ditemukan. Coba scroll manual sedikit lalu jalankan ulang script.');
+        console.error('NOL link ditemukan.');
     }
 }
 

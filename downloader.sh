@@ -273,6 +273,10 @@ download_url() {
     return 1
 }
 
+    # Clean up commas and quotes if user pasted JSON-like content
+    sed -i "s/^[[:space:]]*[\"']//; s/[\"'][[:space:]]*,[[:space:]]*$//; s/[\"'][[:space:]]*$//" "$QUEUE_FILE"
+
+
 # === Proper queue processing — line-by-line to avoid race conditions ===
 process_queue_safe() {
     if [[ ! -f "$QUEUE_FILE" ]]; then
